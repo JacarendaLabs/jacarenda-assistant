@@ -53,3 +53,28 @@ Gateway inbound events use a channel-discriminated union model (`GatewayInboundE
 Trust/guardian decisions must be keyed on `actorExternalId` only — never fall back to `conversationExternalId` for actor identity.
 
 Physical DB column names (`externalUserId`, `externalChatId`) are unchanged; the rename is at the API/type layer only.
+
+## Admin UI (`gateway/admin-ui/`)
+
+The admin command-center SPA served at `/admin`:
+
+- **Stack:** Vite + React 18 + TypeScript + Tailwind 3 + shadcn/ui + lucide-react.
+- **Design system:** must follow [`DESIGN_SYSTEM.md`](../DESIGN_SYSTEM.md) at repo root — monochrome, Inter, `rounded-md` buttons, `rounded-2xl` cards with `hover-lift`, black `w-14 h-14 rounded-xl` icon tiles. Never roll a new button primitive; extend the shadcn one.
+- **Serving:** `gateway/src/admin/routes.ts` → `serveSpaIndex()` at `GET /admin`, `serveSpaFile()` for `/admin/assets/*` (hashed bundles, immutable cache) and root-level public files (logo, favicon).
+- **Build:** `cd gateway/admin-ui && bun install && bun run build`. Docker bakes this into the runtime stage in `deploy/Dockerfile.combined`.
+- **Adding pages/components:** create under `src/components/` following the signature card pattern. Use the `api()` helper in `src/lib/api.ts` for same-origin `/admin/api/*` calls with session cookies.
+
+### Admin auth
+
+- Login flow: password (+ remember-me) → TOTP (or first-run enrolment with QR + copy-secret). Session cookie is HMAC-signed with the shared `ACTOR_TOKEN_SIGNING_KEY` — the same key the daemon JWTs use, so gateway + daemon verify each other's tokens.
+- Per-IP rate limit on `/admin/api/login` (5 fails / 15 min / IP → 15-min lockout).
+- Admin-bound API calls to the daemon are proxied via `adminProxyToDaemon()` which mints a fresh `actor_client_v1` JWT with 60s TTL per request.
+
+## Fibery integration
+
+Business state (brand, services, clients, campaigns, invoices, contracts, etc.) lives in Fibery at `jacarendalabs.fibery.io`. Vellum agents read from / write to it via the API. Agent _config_ (soul, guardrails, tools, triggers) stays in the gateway's local DB — do not mirror it into Fibery.
+
+- **Setup script:** `scripts/setup-fibery-marketing.py` — idempotent, re-runnable.
+- **Setup guide:** [`FIBERY_SETUP.md`](../FIBERY_SETUP.md) at repo root (prerequisite UI steps + script usage).
+- **Credentials:** `FIBERY_WORKSPACE_URL` + `FIBERY_API_TOKEN` stashed as Fly secrets on `vellum-gateway`.
+- **Webhook URL:** `POST https://assistant.jacarendalabs.com/webhooks/fibery` — receiver route to be built in agent platform Phase 2.
