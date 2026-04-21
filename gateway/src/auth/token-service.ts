@@ -91,7 +91,7 @@ export function initSigningKey(key: Buffer): void {
   signingKey = key;
 }
 
-function getSigningKey(): Buffer {
+export function getSigningKey(): Buffer {
   if (!signingKey) {
     throw new Error(
       "Auth signing key not initialized — call initSigningKey() during startup",

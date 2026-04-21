@@ -8,6 +8,10 @@
 !gateway/**
 !packages/
 !packages/**
+!deploy/
+!deploy/**
+!meta/
+!meta/**
 !skills/
 !skills/meet-join/
 !skills/meet-join/package.json
@@ -39,6 +43,11 @@ credential-executor/.env.*
 gateway/node_modules/
 gateway/.env
 gateway/.env.*
+# Admin UI: ship source + lockfile + public assets; exclude installed deps
+# and any local build output (Docker builds the SPA fresh in the image).
+gateway/admin-ui/node_modules/
+gateway/admin-ui/dist/
+gateway/admin-ui/.tsbuildinfo-node/
 packages/*/node_modules/
 packages/*/.env
 packages/*/.env.*

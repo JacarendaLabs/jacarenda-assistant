@@ -69,6 +69,7 @@ import { createOAuthAppsProxyHandler } from "./http/routes/oauth-apps-proxy.js";
 import { createOAuthProvidersProxyHandler } from "./http/routes/oauth-providers-proxy.js";
 import { createChannelReadinessProxyHandler } from "./http/routes/channel-readiness-proxy.js";
 import { createRuntimeHealthProxyHandler } from "./http/routes/runtime-health-proxy.js";
+import { createAdminRoutes } from "./admin/routes.js";
 import { createUpgradeBroadcastProxyHandler } from "./http/routes/upgrade-broadcast-proxy.js";
 import {
   createMigrationExportProxyHandler,
@@ -1101,6 +1102,10 @@ async function main() {
       handler: (req, params) => handleTrustRulesDelete(req, params[0]),
     },
   ];
+
+  // Admin UI + API (password + TOTP 2FA, rate-limited). Added before the
+  // catch-all runtime proxy so /admin/* doesn't get forwarded to the daemon.
+  routes.push(...createAdminRoutes(config));
 
   // The runtime proxy catch-all is only added when the proxy is enabled.
   // It must be last so that all specific routes are checked first.

@@ -1,0 +1,44 @@
+# Credential Executor Service (managed mode): isolated secrets handler.
+# Never exposed to the internet. Reachable as vellum-ces.internal:8090.
+# The assistant talks to CES over an internal channel; secrets never reach the model.
+#
+# Deploy from repo root:
+#   flyctl deploy --config deploy/fly/ces.toml --remote-only
+
+app = "vellum-ces"
+primary_region = "lhr"
+
+# Dockerfile is passed via --dockerfile flag at deploy time (relative to repo root):
+#   flyctl deploy --config deploy/fly/ces.toml --dockerfile credential-executor/Dockerfile --remote-only
+[build]
+
+[env]
+  CES_MODE = "managed"
+  CES_HEALTH_PORT = "8090"
+  NODE_ENV = "production"
+
+[[mounts]]
+  source = "vellum_ces_security"
+  destination = "/ces-security"
+  initial_size = "1gb"
+
+[[mounts]]
+  source = "vellum_ces_data"
+  destination = "/ces-data"
+  initial_size = "1gb"
+
+[[services]]
+  internal_port = 8090
+  protocol = "tcp"
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.tcp_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.tsbuildinfo-node/
+
+# TypeScript incremental build artifacts
+*.tsbuildinfo
+
+# Local env
+.env
+.env.local
