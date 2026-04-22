@@ -5,14 +5,26 @@ import { useStageAnimations } from "@/hooks/useStageAnimations";
 interface DashboardProps {
   onSignOut: () => void;
   onUnauthorized: () => void;
+  onNavigateAgents: () => void;
 }
 
-export function Dashboard({ onSignOut, onUnauthorized }: DashboardProps) {
+export function Dashboard({
+  onSignOut,
+  onUnauthorized,
+  onNavigateAgents,
+}: DashboardProps) {
   useStageAnimations();
 
   return (
     <div className="min-h-screen bg-white">
-      <TopBar onSignOut={onSignOut} />
+      <TopBar
+        onSignOut={onSignOut}
+        activeTab="channels"
+        onNavigateChannels={() => {
+          /* no-op — already here */
+        }}
+        onNavigateAgents={onNavigateAgents}
+      />
 
       <main>
         {/* Hero — sized for admin, not marketing (mid-scale, not landing) */}

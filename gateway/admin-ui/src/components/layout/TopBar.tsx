@@ -5,14 +5,25 @@ import { cn } from "@/lib/utils";
 
 interface TopBarProps {
   onSignOut: () => void;
+  /** Active tab — used to style the nav. Omit to hide nav entirely. */
+  activeTab?: "channels" | "agents";
+  onNavigateChannels?: () => void;
+  onNavigateAgents?: () => void;
 }
 
 /**
  * Fixed-top bar that mirrors jacarendalabs.com's header behaviour:
  * transparent at the top → frosted white + shadow-sm once scrolled past
- * 50px. Sign-out is a proper outline button with a confirm guard.
+ * 50px. Sign-out is a proper outline button with a confirm guard. If
+ * nav callbacks are supplied, a slim tab row appears between the brand
+ * lockup and the sign-out button.
  */
-export function TopBar({ onSignOut }: TopBarProps) {
+export function TopBar({
+  onSignOut,
+  activeTab,
+  onNavigateChannels,
+  onNavigateAgents,
+}: TopBarProps) {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -26,6 +37,8 @@ export function TopBar({ onSignOut }: TopBarProps) {
     onSignOut();
   };
 
+  const showNav = Boolean(onNavigateChannels || onNavigateAgents);
+
   return (
     <header
       className={cn(
@@ -37,7 +50,7 @@ export function TopBar({ onSignOut }: TopBarProps) {
     >
       <div
         className={cn(
-          "container mx-auto px-6 flex items-center justify-between transition-all duration-200",
+          "container mx-auto px-6 flex items-center justify-between gap-6 transition-all duration-200",
           scrolled ? "py-2" : "py-3",
         )}
       >
@@ -58,6 +71,25 @@ export function TopBar({ onSignOut }: TopBarProps) {
           <span className="text-[13px] text-gray-500">Assistant Admin</span>
         </a>
 
+        {showNav && (
+          <nav className="hidden md:flex items-center gap-1">
+            {onNavigateChannels && (
+              <NavTab
+                label="Channels"
+                active={activeTab === "channels"}
+                onClick={onNavigateChannels}
+              />
+            )}
+            {onNavigateAgents && (
+              <NavTab
+                label="Agents"
+                active={activeTab === "agents"}
+                onClick={onNavigateAgents}
+              />
+            )}
+          </nav>
+        )}
+
         <Button
           variant="outline"
           size="sm"
@@ -69,5 +101,30 @@ export function TopBar({ onSignOut }: TopBarProps) {
         </Button>
       </div>
     </header>
+  );
+}
+
+function NavTab({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "px-4 h-9 rounded-md text-sm font-medium transition-colors",
+        active
+          ? "bg-black text-white"
+          : "text-gray-700 hover:text-black hover:bg-gray-100",
+      )}
+    >
+      {label}
+    </button>
   );
 }

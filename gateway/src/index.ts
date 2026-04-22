@@ -130,6 +130,9 @@ import { AvatarChannelSyncer } from "./avatar-sync/avatar-channel-syncer.js";
 import { AvatarSyncWatcher } from "./avatar-sync/avatar-sync-watcher.js";
 import { SlackAvatarSyncer } from "./avatar-sync/slack-avatar-syncer.js";
 import { initGatewayDb } from "./db/connection.js";
+import { initJacarendaDb } from "./jacarenda/db.js";
+import { seedIfEmpty as seedJacarendaAgents } from "./jacarenda/agent-store.js";
+import { createJacarendaRoutes } from "./jacarenda/routes.js";
 
 const log = getLogger("main");
 
@@ -228,6 +231,8 @@ async function main() {
   log.info("JWT signing key initialized");
 
   await initGatewayDb();
+  await initJacarendaDb();
+  seedJacarendaAgents();
 
   // ── TTL caches ──
   // Instantiate caches for credential and config file reads.
@@ -1106,6 +1111,9 @@ async function main() {
   // Admin UI + API (password + TOTP 2FA, rate-limited). Added before the
   // catch-all runtime proxy so /admin/* doesn't get forwarded to the daemon.
   routes.push(...createAdminRoutes(config));
+  // Jacarenda agent-platform API — namespaced under /admin/api/jacarenda/*,
+  // same session cookie as the rest of /admin. See UPSTREAM_SYNC.md.
+  routes.push(...createJacarendaRoutes());
 
   // The runtime proxy catch-all is only added when the proxy is enabled.
   // It must be last so that all specific routes are checked first.
