@@ -7,9 +7,10 @@
  */
 
 import type { ToolImpl } from "./tool-context.js";
+import { fiberyCreateTool } from "./tools/fibery-create.js";
 import { fiberyQueryTool } from "./tools/fibery-query.js";
 
-const TOOL_IMPLS: ToolImpl[] = [fiberyQueryTool];
+const TOOL_IMPLS: ToolImpl[] = [fiberyQueryTool, fiberyCreateTool];
 
 const BY_ID: Map<string, ToolImpl> = new Map(TOOL_IMPLS.map((t) => [t.id, t]));
 
