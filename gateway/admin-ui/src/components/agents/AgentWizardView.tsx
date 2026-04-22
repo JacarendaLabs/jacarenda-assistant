@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Agent } from "@/components/agents/types";
+import { VOICE_STYLES, type VoiceStyle } from "@/components/agents/voiceStyles";
 
 /* ------------------------------------------------------------------ types */
 
@@ -467,6 +468,8 @@ function Step1Name({
   );
 }
 
+type VoiceMode = "pick" | "paste" | "tweak";
+
 function Step2Personality({
   value,
   onChange,
@@ -474,28 +477,200 @@ function Step2Personality({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const [mode, setMode] = useState<VoiceMode>("pick");
+  const [pickedStyleId, setPickedStyleId] = useState<string | null>(null);
+  const [samples, setSamples] = useState("");
+
+  const pickStyle = (style: VoiceStyle) => {
+    setPickedStyleId(style.id);
+    onChange(style.brief);
+  };
+
+  // When user edits the freeform textarea in "tweak" mode, we stop
+  // tracking a specific style — whatever they've written stands on its own.
+  const handleFreeformChange = (v: string) => {
+    onChange(v);
+  };
+
+  const handleSamplesChange = (v: string) => {
+    setSamples(v);
+    const trimmed = v.trim();
+    if (trimmed.length === 0) {
+      onChange("");
+      return;
+    }
+    onChange(
+      `You write in the style of the samples below. Match their rhythm, vocabulary, and level of formality. Never invent clients, numbers, or claims the samples don't support.\n\n--- SAMPLES ---\n${trimmed}`,
+    );
+  };
+
   return (
     <div>
       <StepHeader
         title="How should it sound?"
-        subcopy="This is the personality your agent uses when it writes for you. Read it through — if any sentence doesn't sound like you, change it."
+        subcopy="Pick a style, or paste a few of your own messages so the agent matches your voice."
       />
-      <Label
-        htmlFor="agent-personality"
-        className="text-sm font-medium text-gray-700 mb-2 block"
-      >
-        Personality
-      </Label>
-      <Textarea
-        id="agent-personality"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-h-[220px]"
+
+      <ModeSwitch
+        mode={mode}
+        onChange={(m) => {
+          setMode(m);
+          if (m === "pick") {
+            // Reset to last-picked style or clear
+            const current = VOICE_STYLES.find((s) => s.brief === value);
+            setPickedStyleId(current?.id ?? null);
+            if (!current && pickedStyleId) {
+              const last = VOICE_STYLES.find((s) => s.id === pickedStyleId);
+              if (last) onChange(last.brief);
+            }
+          } else if (m === "paste") {
+            // If we don't have any sample-flavoured text yet, clear personality
+            if (!value.startsWith("You write in the style of the samples")) {
+              setSamples("");
+              onChange("");
+            }
+          }
+        }}
       />
-      <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-        Tip: write in the second person (&quot;You write like…&quot;). Name the
-        things to avoid as well as the things to embrace.
-      </p>
+
+      {mode === "pick" && (
+        <div className="mt-8 space-y-3">
+          {VOICE_STYLES.map((style) => {
+            const active = pickedStyleId === style.id;
+            return (
+              <button
+                key={style.id}
+                type="button"
+                onClick={() => pickStyle(style)}
+                className={cn(
+                  "w-full text-left p-6 rounded-2xl border bg-white shadow-sm transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2",
+                  active
+                    ? "border-black"
+                    : "border-gray-100 hover:border-gray-300 hover-lift",
+                )}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-black">{style.label}</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {style.oneLine}
+                    </p>
+                  </div>
+                  {active && (
+                    <CircleCheck className="w-5 h-5 text-black flex-shrink-0 mt-1" />
+                  )}
+                </div>
+                <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-100">
+                  <p className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-gray-500 mb-2">
+                    Sample
+                  </p>
+                  <p className="text-sm text-gray-700 leading-relaxed italic">
+                    &ldquo;{style.sample}&rdquo;
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+
+          {pickedStyleId && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setMode("tweak")}
+                className="text-sm text-gray-600 hover:text-black underline underline-offset-4"
+              >
+                Tweak this voice in your own words →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === "paste" && (
+        <div className="mt-8">
+          <Label
+            htmlFor="agent-samples"
+            className="text-sm font-medium text-gray-700 mb-2 block"
+          >
+            Paste 3–5 things you've written
+          </Label>
+          <Textarea
+            id="agent-samples"
+            value={samples}
+            onChange={(e) => handleSamplesChange(e.target.value)}
+            placeholder={`Paste a LinkedIn post, an email you sent, a message to a client — anything you've written that sounds like you.\n\nSeparate each sample with a blank line.`}
+            className="min-h-[260px]"
+          />
+          <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+            We store these as your voice reference. The agent will match the
+            rhythm, vocabulary, and formality without copying phrases.
+          </p>
+        </div>
+      )}
+
+      {mode === "tweak" && (
+        <div className="mt-8">
+          <Label
+            htmlFor="agent-personality"
+            className="text-sm font-medium text-gray-700 mb-2 block"
+          >
+            Voice brief
+          </Label>
+          <Textarea
+            id="agent-personality"
+            value={value}
+            onChange={(e) => handleFreeformChange(e.target.value)}
+            className="min-h-[240px]"
+          />
+          <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+            Writing in the second person works best (&ldquo;You write
+            like…&rdquo;). Name what to avoid as well as what to embrace.
+          </p>
+          <div className="pt-4">
+            <button
+              type="button"
+              onClick={() => setMode("pick")}
+              className="text-sm text-gray-600 hover:text-black underline underline-offset-4"
+            >
+              ← Back to style picker
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModeSwitch({
+  mode,
+  onChange,
+}: {
+  mode: VoiceMode;
+  onChange: (m: VoiceMode) => void;
+}) {
+  const visibleModes: { id: VoiceMode; label: string }[] = [
+    { id: "pick", label: "Pick a style" },
+    { id: "paste", label: "Paste my writing" },
+  ];
+  // The "tweak" mode is reached via the inline link from "pick" — we
+  // don't surface it as a top-level tab because most users won't need it.
+  return (
+    <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 p-1">
+      {visibleModes.map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          onClick={() => onChange(m.id)}
+          className={cn(
+            "px-4 h-9 rounded-md text-sm font-medium transition-colors",
+            mode === m.id || (mode === "tweak" && m.id === "pick")
+              ? "bg-black text-white"
+              : "text-gray-700 hover:text-black",
+          )}
+        >
+          {m.label}
+        </button>
+      ))}
     </div>
   );
 }
