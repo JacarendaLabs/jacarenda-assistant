@@ -218,27 +218,26 @@ Mitigations:
 - Before onboarding the first non-Jacarenda tenant: a structured
   security review against this document + one external second opinion.
 
-## Phase 2.1a — what is and isn't enforced right now
+## Phase-by-phase enforcement status
 
-Phase 2.1a is deliberately tool-free. The security surface is:
+Each phase's first task is: "implement the security requirements
+attached to this phase, before adding features." Keep this table
+current — it is the running audit trail.
 
-- One outbound Anthropic call using `ANTHROPIC_API_KEY` (existing Fly
-  secret).
-- User input capped at 4000 chars.
-- Run + events persisted with redaction pass.
-- LLM call wrapped in a 60s timeout.
-- Errors sanitised before hitting the UI.
-
-The following are **deferred to their phases** and documented here so
-it's visible they're outstanding:
-
-- Tool allowlist enforcement — **2.2**
-- Per-tenant tool scoping — **2.2**
-- Zod input schemas — **2.2**
-- Trust-mode gate for tools — **2.3**
-- Slack dispatch for approvals — **2.3**
-- Scheduler auth (only the scheduler triggers scheduled runs) — **2.4**
-- Spend cap hard enforcement — **2.5**
-
-Each later phase's first task is: "implement the corresponding section
-above, before adding features."
+| Requirement | Status | Lands / landed in |
+|---|---|---|
+| 1. CES credentials (Slack via `readCredential`) | ✅ enforced | 2.2c |
+| 1. Fibery creds → CES migration | ⏸ deferred | Phase 3 |
+| 2. Tool allowlist in code (not prompt) | ✅ enforced | 2.2a (`orchestrator.selectToolsForAgent`) |
+| 3. Per-tenant tool scoping | ✅ enforced | 2.2a (`ToolContext.tenantId` plumbed) |
+| 4. Zod input schemas (strict, no `z.any`) | ✅ enforced | 2.2a onwards — every tool |
+| 5. Trust-mode gate in code | ✅ enforced | 2.3a (pause/resume; hard-fail backstop retained) |
+| 5. Approval dispatch in originating channel | ⏭ Slack in 2.3b; WhatsApp in 4 |
+| 6. Audit trail in `agent_run_events` | ✅ enforced | 2.1a onwards — single `appendEvent` chokepoint |
+| 7. Output redaction (credential shapes, size caps) | ✅ enforced | 2.1a (`run-store.redact`); tool-side caps in 2.2a/b/c |
+| 8. Spend cap hard enforcement | ⏭ 2.5 | cost is logged today |
+| Approval idempotency (double-decide) | ✅ enforced | 2.3a (`ApprovalAlreadyDecidedError`) |
+| Paused-state rebuild safety | ✅ enforced | 2.3a (`loadPauseState<T>` + defensive parse) |
+| Slack signing-secret replay protection | ⏭ 2.3b | |
+| Scheduler-only trigger auth | ⏭ 2.4 | |
+| Per-tenant / per-day spend caps | ⏭ 2.5 | per-run cap is the 2.5 MVP |

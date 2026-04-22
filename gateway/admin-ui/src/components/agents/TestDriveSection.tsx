@@ -108,9 +108,9 @@ export function TestDriveSection({
       </div>
 
       <p className="text-sm text-gray-600 leading-relaxed mb-5">
-        Sandbox the agent. Nothing is sent anywhere — you&rsquo;re just seeing
-        what it would draft. No tools are available yet (those land in Phase
-        2.2).
+        Sandbox the agent with any prompt. In draft or ask mode, any action that
+        would change the outside world (write to Fibery, post to Slack) pauses
+        for your approval. In autopilot, it runs.
       </p>
 
       <Label

@@ -61,10 +61,11 @@ for 6–12 weeks before onboarding a second tenant.
 |---|---|---|
 | 1 | Config only — schema, CRUD API, wizard, detail, approvals scaffold, test-drive stub | ✅ Shipped |
 | 2.1a | Runtime orchestrator (non-tool), security policy, live Test drive | ✅ Shipped |
-| 2.2a | Tool machinery + `fibery.query` (read-only, lean) | ✅ Shipped |
-| 2.2b | `fibery.create` — trust-mode gate triggers for real | ⏭ Next |
-| 2.2c | `slack.post-to-channel`, `slack.dm` — CES-gated creds | |
-| 2.3 | Approval gate + Slack Block Kit dispatch + callback resume | |
+| 2.2a | Tool machinery + `fibery.query` (read-only) | ✅ Shipped |
+| 2.2b | `fibery.create` — first mutating tool + trust-mode gate hard-fail | ✅ Shipped |
+| 2.2c | `slack.post-to-channel`, `slack.dm` — CES-gated creds via `readCredential` | ✅ Shipped |
+| 2.3a | Pause / resume lifecycle + admin-UI approvals (approve / reject → run resumes) | ✅ Shipped |
+| 2.3b | Slack Block Kit dispatch for approvals + interactivity callback | ⏭ Next |
 | 2.4 | Scheduler tick loop — weekly / daily triggers | |
 | 2.5 | Spend-cap hard enforcement + cost tracking | |
 | 3 | Fibery bridge — webhook receiver, `agent_memory` sync (org scope) | |
