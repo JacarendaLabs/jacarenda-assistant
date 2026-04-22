@@ -60,12 +60,16 @@ Upstream has never touched them, so rename + refactor at will:
 | Location | Owner |
 |---|---|
 | `CLAUDE.md` (gitignored by upstream) | Jacarenda |
+| `JACARENDA.md` | Jacarenda |
 | `DESIGN_SYSTEM.md` | Jacarenda |
 | `FIBERY_SETUP.md` | Jacarenda |
 | `UPSTREAM_SYNC.md` (this file) | Jacarenda |
+| `docs/RUNTIME_SECURITY.md` | Jacarenda |
 | `gateway/AGENTS.md` | Jacarenda addition |
 | `gateway/admin-ui/` (entire React SPA) | Jacarenda |
 | `gateway/src/admin/session.ts`, `totp.ts`, `totp-store.ts`, `rate-limit.ts` | Jacarenda additions |
+| `gateway/src/jacarenda/` (entire agent-platform backend incl. `runtime/`) | Jacarenda |
+| `gateway/src/__tests__/jacarenda-*.test.ts` | Jacarenda |
 | `deploy/` (Dockerfile.combined, entrypoint-combined.sh, fly/, mint-admin-token.ts) | Jacarenda |
 | `scripts/setup-fibery-*.py` | Jacarenda |
 
