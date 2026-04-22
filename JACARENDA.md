@@ -65,13 +65,41 @@ for 6–12 weeks before onboarding a second tenant.
 | 2.2b | `fibery.create` — first mutating tool + trust-mode gate hard-fail | ✅ Shipped |
 | 2.2c | `slack.post-to-channel`, `slack.dm` — CES-gated creds via `readCredential` | ✅ Shipped |
 | 2.3a | Pause / resume lifecycle + admin-UI approvals (approve / reject → run resumes) | ✅ Shipped |
-| 2.3b | Slack Block Kit dispatch for approvals + interactivity callback | ⏭ Next |
-| 2.4 | Scheduler tick loop — weekly / daily triggers | |
+| 2.3b1 | Slack outbound approval notifications (Block Kit → admin-UI) | ✅ Shipped |
+| 2.3b2 | Slack inbound interactivity — Approve / Reject buttons in Slack | ⏭ Next |
+| **2.3c** | **Slack inbound conversation** — @mention / DM the agent in Slack, agent replies in-thread with tools + approvals + memory | NEW — prioritised |
+| 2.4 | Scheduler tick loop — weekly / daily / cron triggers | |
 | 2.5 | Spend-cap hard enforcement + cost tracking | |
+| **2.6** | **LinkedIn integration** — OAuth + `linkedin.post-to-feed` tool (CES-gated) | NEW |
+| **2.7** | **Content calendar** — Fibery-backed calendar view + `content.schedule-for-date` tool | NEW |
+| **2.8** | **Slack-first weekly planning loop** — agent proposes week's calendar via Slack, user approves → agent drafts each post → individual approvals → scheduler fires → reports back in Slack | NEW |
 | 3 | Fibery bridge — webhook receiver, `agent_memory` sync (org scope) | |
 | **3.5** | **Content intelligence** — see below | |
-| 4 | Channel-first ops — WhatsApp / email inline interactions | |
+| 4 | Channel-first ops — WhatsApp / Telegram / email inline interactions | |
 | 5 | Template fanout — CS Triage, Bookkeeper, Sales Nurture, Ops Assistant, etc. | |
+
+### Target end state (driven by Phase 2.8 completion)
+
+Strategic North Star (confirmed with user 2026-04-22): **a solo operator runs their entire social-media function from Slack / WhatsApp / Telegram — ideation, planning, creation, approval, scheduling, posting, review.** Jacarenda Labs proves it on LinkedIn first (free API, B2B audience fit), then expands channel-by-channel. Multi-function is the same architecture with more agent templates (CS Triage, Bookkeeper, Sales Nurture, Ops Assistant…).
+
+**Why LinkedIn first:**
+- Free posting API (`ugcPost` endpoint) — no subscription needed
+- OAuth 2.0 with `w_member_social` scope for personal post, `w_organization_social` for company page
+- Matches Jacarenda Labs' B2B consultancy audience so dogfooding has business value
+- Lowest regulatory friction of major networks (vs. X's API tier changes, Meta's Business Manager complexity)
+
+**Concrete flow that Phase 2.8 delivers:**
+
+1. *Monday 08:00:* Operator DMs `@Jacarenda Assistant` in Slack: *"plan this week's LinkedIn"*
+2. Agent queries Fibery (Brand voice, Service Lines, Case Studies, Past Content) → proposes a 3–5 post calendar with topics, dates, hooks
+3. Operator approves the calendar in Slack with a button press
+4. Agent drafts each post one by one, sends each as a separate Slack approval with full preview
+5. Operator approves (or asks for edits via Slack thread reply) each draft
+6. Approved drafts saved to Fibery (`Marketing/Content`) and scheduled via `content.schedule-for-date`
+7. *Scheduler fires at each scheduled time* → `linkedin.post-to-feed` publishes → agent reports back in Slack with the LinkedIn URL
+8. *(After Phase 3.5)* Week-end review: agent pulls LinkedIn Analytics, updates `Marketing/Channel Performance`, reflects in Slack on what worked
+
+All of this while enforcing `RUNTIME_SECURITY.md` — each new platform tool goes through the 8-requirement checklist, LinkedIn token lives in CES, Zod-validated inputs, trust-mode gate, audit trail.
 
 ### Phase 3.5 — Content intelligence (deferred commitment)
 
