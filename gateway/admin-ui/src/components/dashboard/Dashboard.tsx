@@ -6,12 +6,14 @@ interface DashboardProps {
   onSignOut: () => void;
   onUnauthorized: () => void;
   onNavigateAgents: () => void;
+  onNavigateApprovals: () => void;
 }
 
 export function Dashboard({
   onSignOut,
   onUnauthorized,
   onNavigateAgents,
+  onNavigateApprovals,
 }: DashboardProps) {
   useStageAnimations();
 
@@ -24,6 +26,7 @@ export function Dashboard({
           /* no-op — already here */
         }}
         onNavigateAgents={onNavigateAgents}
+        onNavigateApprovals={onNavigateApprovals}
       />
 
       <main>

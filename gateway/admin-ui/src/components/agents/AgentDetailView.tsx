@@ -8,11 +8,14 @@ import {
   CircleDashed,
   Cog,
   Coins,
+  Play,
   Shield,
   Sparkles,
 } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { useToast } from "@/components/ui/use-toast";
 import { useStageAnimations } from "@/hooks/useStageAnimations";
 import type { Agent } from "@/components/agents/types";
 
@@ -31,6 +34,7 @@ interface AgentDetailViewProps {
   onUnauthorized: () => void;
   onBack: () => void;
   onNavigateChannels: () => void;
+  onNavigateApprovals: () => void;
 }
 
 type LoadState =
@@ -71,9 +75,19 @@ export function AgentDetailView({
   onUnauthorized,
   onBack,
   onNavigateChannels,
+  onNavigateApprovals,
 }: AgentDetailViewProps) {
   useStageAnimations();
+  const { toast } = useToast();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+
+  const handleTestDrive = () => {
+    toast({
+      title: "Test drive is coming.",
+      description:
+        "The runtime that actually runs agents lands in Phase 2. For now this button is a placeholder — your config is saved and ready.",
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +129,7 @@ export function AgentDetailView({
         activeTab="agents"
         onNavigateChannels={onNavigateChannels}
         onNavigateAgents={onBack}
+        onNavigateApprovals={onNavigateApprovals}
       />
 
       <main>
@@ -142,7 +157,11 @@ export function AgentDetailView({
             )}
 
             {state.kind === "ready" && (
-              <DetailBody agent={state.agent} tools={state.tools} />
+              <DetailBody
+                agent={state.agent}
+                tools={state.tools}
+                onTestDrive={handleTestDrive}
+              />
             )}
           </div>
         </section>
@@ -151,7 +170,15 @@ export function AgentDetailView({
   );
 }
 
-function DetailBody({ agent, tools }: { agent: Agent; tools: ToolSpec[] }) {
+function DetailBody({
+  agent,
+  tools,
+  onTestDrive,
+}: {
+  agent: Agent;
+  tools: ToolSpec[];
+  onTestDrive: () => void;
+}) {
   const grantedTools = useMemo(
     () =>
       agent.toolAllowlist
@@ -192,6 +219,14 @@ function DetailBody({ agent, tools }: { agent: Agent; tools: ToolSpec[] }) {
             {agent.description}
           </p>
         </div>
+        <Button
+          variant="outline"
+          className="h-11 px-5 border-gray-300 text-black hover:bg-black hover:text-white hover:border-black flex-shrink-0"
+          onClick={onTestDrive}
+        >
+          <Play className="w-4 h-4" />
+          <span>Test drive</span>
+        </Button>
       </div>
 
       {/* Trust mode banner */}

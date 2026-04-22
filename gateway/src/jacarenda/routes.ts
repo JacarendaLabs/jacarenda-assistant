@@ -20,6 +20,7 @@ import {
 } from "./agent-store.js";
 import { TEMPLATES, getTemplate } from "./templates.js";
 import { TOOLS } from "./tools.js";
+import { listPendingApprovals } from "./approval-store.js";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -145,6 +146,17 @@ export function createJacarendaRoutes(): RouteDefinition[] {
         const ok = deleteAgent(params[0]);
         if (!ok) return json({ error: "not found" }, 404);
         return json({ ok: true });
+      },
+    },
+
+    // Pending approvals (read-only in phase 1; runtime writes land in phase 2)
+    {
+      path: "/admin/api/jacarenda/approvals",
+      method: "GET",
+      auth: "custom",
+      handler: (req) => {
+        if (!requireAdminSession(req)) return unauthorized();
+        return json({ approvals: listPendingApprovals() });
       },
     },
   ];

@@ -4,6 +4,7 @@ import { Dashboard } from "@/components/dashboard/Dashboard";
 import { AgentsView } from "@/components/agents/AgentsView";
 import { AgentDetailView } from "@/components/agents/AgentDetailView";
 import { AgentWizardView } from "@/components/agents/AgentWizardView";
+import { ApprovalsView } from "@/components/approvals/ApprovalsView";
 import { Toaster } from "@/components/ui/toaster";
 import { api } from "@/lib/api";
 
@@ -12,7 +13,8 @@ type View =
   | { kind: "channels" }
   | { kind: "agents" }
   | { kind: "agent-detail"; id: string }
-  | { kind: "agent-wizard" };
+  | { kind: "agent-wizard" }
+  | { kind: "approvals" };
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("checking");
@@ -52,6 +54,7 @@ export default function App() {
           onSignOut={handleSignOut}
           onUnauthorized={() => setAuth("unauthed")}
           onNavigateAgents={() => setView({ kind: "agents" })}
+          onNavigateApprovals={() => setView({ kind: "approvals" })}
         />
       )}
       {auth === "authed" && view.kind === "agents" && (
@@ -59,6 +62,7 @@ export default function App() {
           onSignOut={handleSignOut}
           onUnauthorized={() => setAuth("unauthed")}
           onNavigateChannels={() => setView({ kind: "channels" })}
+          onNavigateApprovals={() => setView({ kind: "approvals" })}
           onSelectAgent={(id) => setView({ kind: "agent-detail", id })}
           onNewAgent={() => setView({ kind: "agent-wizard" })}
         />
@@ -70,6 +74,7 @@ export default function App() {
           onUnauthorized={() => setAuth("unauthed")}
           onBack={() => setView({ kind: "agents" })}
           onNavigateChannels={() => setView({ kind: "channels" })}
+          onNavigateApprovals={() => setView({ kind: "approvals" })}
         />
       )}
       {auth === "authed" && view.kind === "agent-wizard" && (
@@ -79,6 +84,14 @@ export default function App() {
           onCancel={() => setView({ kind: "agents" })}
           onCreated={(agent) => setView({ kind: "agent-detail", id: agent.id })}
           onNavigateChannels={() => setView({ kind: "channels" })}
+        />
+      )}
+      {auth === "authed" && view.kind === "approvals" && (
+        <ApprovalsView
+          onSignOut={handleSignOut}
+          onUnauthorized={() => setAuth("unauthed")}
+          onNavigateChannels={() => setView({ kind: "channels" })}
+          onNavigateAgents={() => setView({ kind: "agents" })}
         />
       )}
       <Toaster />

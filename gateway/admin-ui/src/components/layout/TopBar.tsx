@@ -6,9 +6,10 @@ import { cn } from "@/lib/utils";
 interface TopBarProps {
   onSignOut: () => void;
   /** Active tab — used to style the nav. Omit to hide nav entirely. */
-  activeTab?: "channels" | "agents";
+  activeTab?: "channels" | "agents" | "approvals";
   onNavigateChannels?: () => void;
   onNavigateAgents?: () => void;
+  onNavigateApprovals?: () => void;
 }
 
 /**
@@ -23,6 +24,7 @@ export function TopBar({
   activeTab,
   onNavigateChannels,
   onNavigateAgents,
+  onNavigateApprovals,
 }: TopBarProps) {
   const [scrolled, setScrolled] = useState(false);
 
@@ -37,7 +39,9 @@ export function TopBar({
     onSignOut();
   };
 
-  const showNav = Boolean(onNavigateChannels || onNavigateAgents);
+  const showNav = Boolean(
+    onNavigateChannels || onNavigateAgents || onNavigateApprovals,
+  );
 
   return (
     <header
@@ -85,6 +89,13 @@ export function TopBar({
                 label="Agents"
                 active={activeTab === "agents"}
                 onClick={onNavigateAgents}
+              />
+            )}
+            {onNavigateApprovals && (
+              <NavTab
+                label="Approvals"
+                active={activeTab === "approvals"}
+                onClick={onNavigateApprovals}
               />
             )}
           </nav>

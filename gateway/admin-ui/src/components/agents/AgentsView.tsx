@@ -11,6 +11,7 @@ interface AgentsViewProps {
   onSignOut: () => void;
   onUnauthorized: () => void;
   onNavigateChannels: () => void;
+  onNavigateApprovals: () => void;
   onSelectAgent: (id: string) => void;
   onNewAgent: () => void;
 }
@@ -24,6 +25,7 @@ export function AgentsView({
   onSignOut,
   onUnauthorized,
   onNavigateChannels,
+  onNavigateApprovals,
   onSelectAgent,
   onNewAgent,
 }: AgentsViewProps) {
@@ -65,6 +67,7 @@ export function AgentsView({
         onNavigateAgents={() => {
           /* no-op — already here */
         }}
+        onNavigateApprovals={onNavigateApprovals}
       />
 
       <main>
