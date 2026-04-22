@@ -82,16 +82,40 @@ export function shouldPersonalAssistantClaim(
   if (event.message.callbackData) return false;
   if (!event.actor.actorExternalId) return false;
 
-  const chatType = event.source.chatType;
-  const isDm = chatType === "im";
-  const rawType =
-    typeof event.raw["type"] === "string"
-      ? (event.raw["type"] as string)
-      : undefined;
-  const isAppMention = rawType === "app_mention";
+  if (!isDirectMessageOrAppMention(event.raw, event.source.chatType)) {
+    return false;
+  }
 
-  if (!isDm && !isAppMention) return false;
   return resolvePersonalAssistant() !== null;
+}
+
+/**
+ * Detect a DM or @mention from the raw Slack event payload. The
+ * normalizer doesn't set `chatType: "im"` for DMs (it leaves chatType
+ * unset), so we read the Slack-native signal from the raw event:
+ *  - `raw.type === "app_mention"` → user @mentioned the bot
+ *  - `raw.channel_type === "im"` → direct message channel
+ *  - `raw.channel` starting with "D" → DM channel id (Slack convention,
+ *    last-resort fallback if channel_type is missing)
+ */
+function isDirectMessageOrAppMention(
+  raw: Record<string, unknown>,
+  chatType: string | undefined,
+): boolean {
+  const rawType = typeof raw["type"] === "string" ? raw["type"] : undefined;
+  if (rawType === "app_mention") return true;
+
+  const rawChannelType =
+    typeof raw["channel_type"] === "string" ? raw["channel_type"] : undefined;
+  if (rawChannelType === "im") return true;
+
+  const rawChannel =
+    typeof raw["channel"] === "string" ? raw["channel"] : undefined;
+  if (rawChannel?.startsWith("D")) return true;
+
+  // Last-resort: the normalizer's own chatType, retained for symmetry
+  // with future channels that might populate it.
+  return chatType === "im";
 }
 
 /**

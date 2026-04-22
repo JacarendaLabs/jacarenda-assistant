@@ -1508,9 +1508,18 @@ async function main() {
         const paIsCallback = !!normalized.event.message.callbackData;
         const paHasActor = !!normalized.event.actor.actorExternalId;
         const paRawType = normalized.event.raw["type"];
-        const paIsDm = normalized.event.source.chatType === "im";
+        const paRawChannelType = normalized.event.raw["channel_type"];
+        const paRawChannel = normalized.event.raw["channel"];
         const paIsAppMention =
           typeof paRawType === "string" && paRawType === "app_mention";
+        // The DM normalizer leaves chatType unset, so read the
+        // Slack-native channel_type / channel-id-prefix signal from the
+        // raw event. Mirrors isDirectMessageOrAppMention in
+        // jacarenda/runtime/slack-inbound.ts — keep both in sync.
+        const paIsDm =
+          (typeof paRawChannelType === "string" && paRawChannelType === "im") ||
+          (typeof paRawChannel === "string" && paRawChannel.startsWith("D")) ||
+          normalized.event.source.chatType === "im";
         const paShapeMatches =
           paHasActor &&
           !paIsEdit &&

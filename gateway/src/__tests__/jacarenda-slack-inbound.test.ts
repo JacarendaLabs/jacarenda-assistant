@@ -84,6 +84,7 @@ function buildEvent(overrides?: {
   sourceChannel?: "slack" | "telegram" | "whatsapp" | "email";
   chatType?: string;
   rawType?: string;
+  rawChannelType?: string;
   isEdit?: boolean;
   callbackData?: string;
   actorExternalId?: string;
@@ -93,6 +94,10 @@ function buildEvent(overrides?: {
   channel?: string;
 }): Parameters<typeof shouldPersonalAssistantClaim>[0] {
   const src = overrides?.sourceChannel ?? "slack";
+  const channel = overrides?.channel ?? "C-DM";
+  const raw: Record<string, unknown> = { channel };
+  if (overrides?.rawType) raw.type = overrides.rawType;
+  if (overrides?.rawChannelType) raw.channel_type = overrides.rawChannelType;
   return {
     event: {
       version: "v1",
@@ -100,7 +105,7 @@ function buildEvent(overrides?: {
       receivedAt: "2026-04-22T00:00:00Z",
       message: {
         content: overrides?.content ?? "hello",
-        conversationExternalId: overrides?.channel ?? "C-DM",
+        conversationExternalId: channel,
         externalMessageId: "msg-1",
         ...(overrides?.isEdit ? { isEdit: true } : {}),
         ...(overrides?.callbackData
@@ -116,12 +121,12 @@ function buildEvent(overrides?: {
         chatType: overrides?.chatType ?? "im",
         ...(overrides?.threadTs ? { threadId: overrides.threadTs } : {}),
       },
-      raw: overrides?.rawType ? { type: overrides.rawType } : {},
+      raw,
     } as never,
     routing: {
       assistantId: "a1",
     } as never,
-    channel: overrides?.channel ?? "C-DM",
+    channel,
     threadTs: overrides?.threadTs,
   };
 }
@@ -200,6 +205,30 @@ describe("shouldPersonalAssistantClaim", () => {
     expect(
       shouldPersonalAssistantClaim(buildEvent({ sourceChannel: "telegram" })),
     ).toBe(false);
+  });
+
+  test("claims DM detected via raw.channel_type='im' (production-actual shape)", async () => {
+    await freshDb();
+    createAgent({ templateId: "personal-assistant" });
+    // Mirror what the DM normalizer actually produces — chatType unset
+    // in source, but raw.channel_type === "im" per Slack's payload.
+    const ev = buildEvent({
+      chatType: undefined,
+      rawChannelType: "im",
+      channel: "D123ABC",
+    });
+    expect(shouldPersonalAssistantClaim(ev)).toBe(true);
+  });
+
+  test("claims DM detected via channel id starting with 'D' (last-resort fallback)", async () => {
+    await freshDb();
+    createAgent({ templateId: "personal-assistant" });
+    const ev = buildEvent({
+      chatType: undefined,
+      rawChannelType: undefined,
+      channel: "D456XYZ",
+    });
+    expect(shouldPersonalAssistantClaim(ev)).toBe(true);
   });
 });
 
