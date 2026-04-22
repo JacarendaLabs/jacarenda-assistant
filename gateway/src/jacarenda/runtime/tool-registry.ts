@@ -1,0 +1,22 @@
+/**
+ * Tool registry — maps tool id → implementation.
+ *
+ * The orchestrator never iterates tools freely. It resolves by id
+ * through `getToolImpl()`, and the lookup validates against an agent's
+ * allowlist elsewhere (see `orchestrator.selectToolsForAgent`).
+ */
+
+import type { ToolImpl } from "./tool-context.js";
+import { fiberyQueryTool } from "./tools/fibery-query.js";
+
+const TOOL_IMPLS: ToolImpl[] = [fiberyQueryTool];
+
+const BY_ID: Map<string, ToolImpl> = new Map(TOOL_IMPLS.map((t) => [t.id, t]));
+
+export function getToolImpl(id: string): ToolImpl | undefined {
+  return BY_ID.get(id);
+}
+
+export function allToolImpls(): readonly ToolImpl[] {
+  return TOOL_IMPLS;
+}

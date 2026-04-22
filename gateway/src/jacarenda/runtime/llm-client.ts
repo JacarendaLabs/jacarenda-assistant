@@ -1,12 +1,8 @@
 /**
  * Anthropic SDK wrapper for the agent runtime.
  *
- * Phase 2.1a: a single non-streaming completion. Tool use lands in 2.2.
- * Streaming comes later (tests will stay non-streaming for determinism).
- *
- * All runs are billed against the agent's `spend_cap_cents`. For now
- * we return usage counts from the SDK and let the caller translate to
- * cents; a proper cost table lands in 2.5 (spend-cap enforcement).
+ * Phase 2.2a: multi-turn conversations with tool support. Streaming
+ * still deferred. Singleton client, single source of ANTHROPIC_API_KEY read.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -25,59 +21,87 @@ function getClient(): Anthropic {
   return client;
 }
 
-export interface LlmCompleteInput {
+export type LlmMessage =
+  | { role: "user"; content: string | Anthropic.ToolResultBlockParam[] }
+  | {
+      role: "assistant";
+      content: Array<Anthropic.TextBlock | Anthropic.ToolUseBlock>;
+    };
+
+export interface LlmTool {
+  /** Anthropic requires tool names to match /^[a-zA-Z0-9_-]{1,64}$/ —
+   * we pass the slug here (our tool ids are remapped via toAnthropicName). */
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+export interface LlmTurnInput {
   system: string;
-  userMessage: string;
-  /** Hard cap — protects against runaway generations. */
+  messages: LlmMessage[];
+  tools?: LlmTool[];
   maxTokens?: number;
-  /** Default: Sonnet 4.6 (best balance for agent work). */
   model?: string;
 }
 
-export interface LlmCompleteResult {
-  text: string;
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-  };
+export interface LlmTurnResult {
+  content: Array<Anthropic.TextBlock | Anthropic.ToolUseBlock>;
   stopReason: string;
+  usage: { inputTokens: number; outputTokens: number };
   model: string;
 }
 
-export async function llmComplete(
-  input: LlmCompleteInput,
-): Promise<LlmCompleteResult> {
+export async function llmTurn(input: LlmTurnInput): Promise<LlmTurnResult> {
   const model = input.model ?? "claude-sonnet-4-6";
   const response = await getClient().messages.create({
     model,
     max_tokens: input.maxTokens ?? 1024,
     system: input.system,
-    messages: [{ role: "user", content: input.userMessage }],
+    messages: input.messages as Anthropic.MessageParam[],
+    ...(input.tools && input.tools.length > 0
+      ? {
+          tools: input.tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+          })),
+        }
+      : {}),
   });
 
-  const textBlock = response.content.find(
-    (b): b is Anthropic.TextBlock => b.type === "text",
-  );
-  const text = textBlock?.text ?? "";
-
   return {
-    text,
+    content: response.content as Array<
+      Anthropic.TextBlock | Anthropic.ToolUseBlock
+    >,
+    stopReason: response.stop_reason ?? "unknown",
     usage: {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
     },
-    stopReason: response.stop_reason ?? "unknown",
     model,
   };
 }
 
 /**
  * Rough cost estimate in cents. Sonnet 4.6 pricing: $3/MTok input, $15/MTok
- * output as of 2026-04. Keep this coarse — spend-cap enforcement (phase 2.5)
- * will refine with a proper per-model table.
+ * output as of 2026-04. Spend-cap enforcement (phase 2.5) will refine with
+ * a proper per-model table.
  */
-export function estimateCostCents(usage: LlmCompleteResult["usage"]): number {
-  const inputCost = (usage.inputTokens / 1_000_000) * 3_00; // 300 cents / MTok
-  const outputCost = (usage.outputTokens / 1_000_000) * 15_00; // 1500 cents / MTok
+export function estimateCostCents(usage: {
+  inputTokens: number;
+  outputTokens: number;
+}): number {
+  const inputCost = (usage.inputTokens / 1_000_000) * 3_00;
+  const outputCost = (usage.outputTokens / 1_000_000) * 15_00;
   return Math.ceil(inputCost + outputCost);
+}
+
+/**
+ * Anthropic tool names must match `^[a-zA-Z0-9_-]{1,64}$` — our canonical
+ * tool ids use dots (`fibery.query`). Forward translation; reverse is a
+ * lookup against the allowlist the orchestrator built for the turn
+ * (lookup is safer than string-mangling in reverse).
+ */
+export function toAnthropicName(toolId: string): string {
+  return toolId.replace(/\./g, "_");
 }
