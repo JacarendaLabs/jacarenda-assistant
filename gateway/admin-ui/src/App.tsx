@@ -3,6 +3,7 @@ import { LoginView } from "@/components/login/LoginView";
 import { Dashboard } from "@/components/dashboard/Dashboard";
 import { AgentsView } from "@/components/agents/AgentsView";
 import { AgentDetailView } from "@/components/agents/AgentDetailView";
+import { AgentWizardView } from "@/components/agents/AgentWizardView";
 import { Toaster } from "@/components/ui/toaster";
 import { api } from "@/lib/api";
 
@@ -10,7 +11,8 @@ type AuthState = "checking" | "authed" | "unauthed";
 type View =
   | { kind: "channels" }
   | { kind: "agents" }
-  | { kind: "agent-detail"; id: string };
+  | { kind: "agent-detail"; id: string }
+  | { kind: "agent-wizard" };
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("checking");
@@ -58,6 +60,7 @@ export default function App() {
           onUnauthorized={() => setAuth("unauthed")}
           onNavigateChannels={() => setView({ kind: "channels" })}
           onSelectAgent={(id) => setView({ kind: "agent-detail", id })}
+          onNewAgent={() => setView({ kind: "agent-wizard" })}
         />
       )}
       {auth === "authed" && view.kind === "agent-detail" && (
@@ -66,6 +69,15 @@ export default function App() {
           onSignOut={handleSignOut}
           onUnauthorized={() => setAuth("unauthed")}
           onBack={() => setView({ kind: "agents" })}
+          onNavigateChannels={() => setView({ kind: "channels" })}
+        />
+      )}
+      {auth === "authed" && view.kind === "agent-wizard" && (
+        <AgentWizardView
+          onSignOut={handleSignOut}
+          onUnauthorized={() => setAuth("unauthed")}
+          onCancel={() => setView({ kind: "agents" })}
+          onCreated={(agent) => setView({ kind: "agent-detail", id: agent.id })}
           onNavigateChannels={() => setView({ kind: "channels" })}
         />
       )}

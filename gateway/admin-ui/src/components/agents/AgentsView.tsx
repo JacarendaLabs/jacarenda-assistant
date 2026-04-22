@@ -12,6 +12,7 @@ interface AgentsViewProps {
   onUnauthorized: () => void;
   onNavigateChannels: () => void;
   onSelectAgent: (id: string) => void;
+  onNewAgent: () => void;
 }
 
 type ListState =
@@ -24,6 +25,7 @@ export function AgentsView({
   onUnauthorized,
   onNavigateChannels,
   onSelectAgent,
+  onNewAgent,
 }: AgentsViewProps) {
   useStageAnimations();
   const [state, setState] = useState<ListState>({ kind: "loading" });
@@ -103,7 +105,7 @@ export function AgentsView({
             )}
 
             {state.kind === "ready" && state.agents.length === 0 && (
-              <EmptyState />
+              <EmptyState onNewAgent={onNewAgent} />
             )}
 
             {state.kind === "ready" && state.agents.length > 0 && (
@@ -115,8 +117,7 @@ export function AgentsView({
                   </p>
                   <Button
                     className="bg-black hover:bg-gray-800 text-white h-10 px-4"
-                    disabled
-                    title="Wizard lands in Phase 1.3"
+                    onClick={onNewAgent}
                   >
                     <Plus className="w-4 h-4" />
                     <span>New agent</span>
@@ -140,7 +141,7 @@ export function AgentsView({
   );
 }
 
-function EmptyState() {
+function EmptyState({ onNewAgent }: { onNewAgent: () => void }) {
   return (
     <div className="py-16 flex flex-col items-center text-center">
       <div className="w-14 h-14 rounded-xl bg-black flex items-center justify-center mb-6">
@@ -153,8 +154,7 @@ function EmptyState() {
       </p>
       <Button
         className="bg-black hover:bg-gray-800 text-white h-12 px-6"
-        disabled
-        title="Wizard lands in Phase 1.3"
+        onClick={onNewAgent}
       >
         <Bot className="w-4 h-4" />
         <span>Browse templates</span>
