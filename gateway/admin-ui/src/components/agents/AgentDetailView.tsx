@@ -167,6 +167,7 @@ export function AgentDetailView({
                   <TestDriveSection
                     agent={state.agent}
                     onUnauthorized={onUnauthorized}
+                    onNavigateApprovals={onNavigateApprovals}
                   />
                 </div>
               </>

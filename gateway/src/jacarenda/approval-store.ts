@@ -1,12 +1,14 @@
 /**
- * Approvals read helpers.
+ * Approvals read + write helpers.
  *
- * Phase 1: no writes (approvals are minted by the runtime in Phase 2).
- * Exposes a typed list so the admin UI can render the queue. Joins
- * agents.name/template_id in so the frontend doesn't need a second
- * round-trip.
+ * Phase 2.3a adds the write path. Approvals are only created by the
+ * orchestrator when a mutating tool hits the trust-mode gate, and only
+ * decided via the admin-session-gated route or the Slack callback
+ * (phase 2.3b). Decision transitions are idempotent — the second
+ * decide attempt returns the already-decided row without mutation.
  */
 
+import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 
 import { getJacarendaDb } from "./db.js";
@@ -90,4 +92,113 @@ export function listPendingApprovals(
     decidedAt: r.decidedAt,
     createdAt: r.createdAt,
   }));
+}
+
+/* -------------------------------------------------------------- write path */
+
+export interface ApprovalRow {
+  id: string;
+  runId: string;
+  tenantId: string;
+  channel: string;
+  externalMessageId: string | null;
+  question: string;
+  proposedActionJson: string;
+  decision: "pending" | "approved" | "rejected" | "expired";
+  decidedBy: string | null;
+  decidedAt: number | null;
+  createdAt: number;
+}
+
+export interface CreateApprovalInput {
+  runId: string;
+  tenantId?: string;
+  channel: "admin_ui" | "slack" | "whatsapp" | "telegram";
+  externalMessageId?: string;
+  question: string;
+  proposedAction: Record<string, unknown>;
+}
+
+export function createApproval(input: CreateApprovalInput): ApprovalRow {
+  const id = randomUUID();
+  const now = Date.now();
+  const row = {
+    id,
+    runId: input.runId,
+    tenantId: input.tenantId ?? DEFAULT_TENANT_ID,
+    channel: input.channel,
+    externalMessageId: input.externalMessageId ?? null,
+    question: input.question,
+    proposedActionJson: JSON.stringify(input.proposedAction),
+    decision: "pending" as const,
+    decidedBy: null as string | null,
+    decidedAt: null as number | null,
+    createdAt: now,
+  };
+  getJacarendaDb().insert(agentApprovals).values(row).run();
+  return row;
+}
+
+export function getApproval(
+  id: string,
+  tenantId: string = DEFAULT_TENANT_ID,
+): ApprovalRow | null {
+  const row = getJacarendaDb()
+    .select()
+    .from(agentApprovals)
+    .where(
+      and(eq(agentApprovals.id, id), eq(agentApprovals.tenantId, tenantId)),
+    )
+    .get();
+  return row ? (row as ApprovalRow) : null;
+}
+
+export type DecisionKind = "approved" | "rejected";
+
+export interface DecideApprovalInput {
+  id: string;
+  tenantId?: string;
+  decision: DecisionKind;
+  decidedBy: string;
+}
+
+export class ApprovalAlreadyDecidedError extends Error {
+  constructor(public readonly currentDecision: string) {
+    super(`Approval already decided as '${currentDecision}'.`);
+    this.name = "ApprovalAlreadyDecidedError";
+  }
+}
+
+/**
+ * Idempotency-preserving decide. If the approval was already decided
+ * (by a prior click or a Slack callback race) we throw — the caller
+ * should treat it as a conflict, not silently overwrite.
+ */
+export function decideApproval(input: DecideApprovalInput): ApprovalRow {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const existing = getApproval(input.id, tenantId);
+  if (!existing) {
+    throw new Error(`Approval ${input.id} not found.`);
+  }
+  if (existing.decision !== "pending") {
+    throw new ApprovalAlreadyDecidedError(existing.decision);
+  }
+  const now = Date.now();
+  getJacarendaDb()
+    .update(agentApprovals)
+    .set({
+      decision: input.decision,
+      decidedBy: input.decidedBy,
+      decidedAt: now,
+    })
+    .where(
+      and(
+        eq(agentApprovals.id, input.id),
+        eq(agentApprovals.tenantId, tenantId),
+      ),
+    )
+    .run();
+  const updated = getApproval(input.id, tenantId);
+  if (!updated) throw new Error("Decide succeeded but row disappeared.");
+  return updated;
 }

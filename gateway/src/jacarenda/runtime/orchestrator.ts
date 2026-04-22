@@ -1,5 +1,6 @@
 /**
- * Agent orchestrator — multi-turn runs with tool support (Phase 2.2a).
+ * Agent orchestrator — multi-turn runs with tool support + pause/resume
+ * for human approval (Phase 2.3a).
  *
  * Security posture (governed by docs/RUNTIME_SECURITY.md):
  *  - Tenant-scoped agent lookup (never cross-tenant)
@@ -11,9 +12,11 @@
  *  - Unknown tool id (LLM hallucinates) → rejected + logged, run fails
  *  - Turn loop bounded by MAX_TURNS to prevent runaway tool-call loops
  *  - Per-turn LLM timeout
- *  - Trust-mode gate: mutating tool in non-autopilot → ApprovalRequired
- *    (2.3 lands the actual approval dispatch; 2.2a hard-fails the run
- *    so no mutation ever happens without the gate in place)
+ *  - Trust-mode gate: mutating tool in non-autopilot → run is PAUSED
+ *    (not hard-failed); approval row is written and loop state
+ *    persisted. On approve the paused tool executes; on reject a
+ *    rejection tool_result is added and the loop continues so the
+ *    LLM can decide what to do next.
  *  - All events flow through run-store.appendEvent which redacts
  *    credential-shaped strings before persistence
  *  - Spend-cap logged but not yet enforced (phase 2.5)
@@ -31,10 +34,19 @@ import {
 import {
   appendEvent,
   finishRun,
+  getRun,
+  loadPauseState,
+  markRunRunning,
+  pauseRun,
   startRun,
   type RunRow,
   type TriggeredBy,
 } from "./run-store.js";
+import {
+  createApproval,
+  getApproval,
+  type DecisionKind,
+} from "../approval-store.js";
 import { allToolImpls } from "./tool-registry.js";
 import {
   ToolExecutionError,
@@ -55,10 +67,15 @@ export interface RunAgentInput {
   triggeredByActor?: string;
 }
 
-export interface RunAgentResult {
-  run: RunRow;
-  responseText: string;
-}
+export type RunAgentOutcome =
+  | { kind: "done"; run: RunRow; responseText: string }
+  | {
+      kind: "needs_approval";
+      run: RunRow;
+      approvalId: string;
+      question: string;
+      proposedAction: { toolId: string; input: Record<string, unknown> };
+    };
 
 export class RuntimeError extends Error {
   constructor(
@@ -69,7 +86,8 @@ export class RuntimeError extends Error {
       | "agent_not_runnable"
       | "llm_failed"
       | "tool_failed"
-      | "approval_required"
+      | "run_not_paused"
+      | "approval_mismatch"
       | "too_many_turns"
       | "internal",
   ) {
@@ -78,7 +96,9 @@ export class RuntimeError extends Error {
   }
 }
 
-export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
+/* --------------------------------------------------------- public entrypoints */
+
+export async function runAgent(input: RunAgentInput): Promise<RunAgentOutcome> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
 
   if (input.userInput.length > MAX_INPUT_CHARS) {
@@ -113,24 +133,389 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     allowlist: agent.toolAllowlist,
   });
 
+  const initialMessages: LlmMessage[] = [
+    { role: "user", content: input.userInput },
+  ];
+
+  return driveLoop({
+    run,
+    agent,
+    tenantId,
+    messages: initialMessages,
+    startTurn: 1,
+    carriedCost: 0,
+  });
+}
+
+/**
+ * Resume a paused run after a human approval decision.
+ * Loads the persisted loop state, applies the decision as a
+ * tool_result on the paused tool_use, and continues the loop.
+ */
+export async function resumeAgent(
+  runId: string,
+  decision: DecisionKind,
+  decidedBy: string,
+  tenantId: string = DEFAULT_TENANT_ID,
+): Promise<RunAgentOutcome> {
+  const run = getRun(runId, tenantId);
+  if (!run) {
+    throw new RuntimeError("Run not found.", "agent_not_found");
+  }
+  if (run.status !== "needs_approval") {
+    throw new RuntimeError(
+      `Run is not paused (status=${run.status}).`,
+      "run_not_paused",
+    );
+  }
+  const state = loadPauseState<PauseState>(runId);
+  if (!state) {
+    throw new RuntimeError(
+      "Paused run state is missing or unreadable.",
+      "run_not_paused",
+    );
+  }
+  const agent = getAgent(run.agentId, tenantId);
+  if (!agent) {
+    throw new RuntimeError(
+      "Agent for paused run no longer exists.",
+      "agent_not_found",
+    );
+  }
+
+  appendEvent(runId, "approval_resolved", {
+    decision,
+    decidedBy,
+    toolId: state.pendingToolImplId,
+  });
+
+  // Rebuild the messages history, then either execute the pending tool
+  // (approved) or inject a rejection tool_result (rejected) and let the
+  // loop continue — the LLM decides how to handle the rejection.
+  const messages: LlmMessage[] = state.messages;
+
+  const toolResults: Array<{
+    type: "tool_result";
+    tool_use_id: string;
+    content: string;
+    is_error?: boolean;
+  }> = [...state.priorToolResults];
+
+  if (decision === "rejected") {
+    toolResults.push({
+      type: "tool_result",
+      tool_use_id: state.pendingToolUseId,
+      content: "The human reviewer rejected this action. Do not retry it.",
+      is_error: true,
+    });
+  } else {
+    // Approved — execute the paused tool now.
+    const impl = allToolImpls().find((t) => t.id === state.pendingToolImplId);
+    if (!impl) {
+      throw new RuntimeError(
+        `Paused tool '${state.pendingToolImplId}' is no longer registered.`,
+        "internal",
+      );
+    }
+    try {
+      const ctx: ToolContext = { agent, runId, tenantId };
+      appendEvent(runId, "tool_call", {
+        turn: state.turn,
+        toolId: impl.id,
+        input: state.pendingToolInput,
+        viaApproval: true,
+      });
+      const out = await impl.execute(
+        state.pendingToolInput as unknown as never,
+        ctx,
+      );
+      const serialised = truncate(JSON.stringify(out), MAX_TOOL_RESULT_CHARS);
+      appendEvent(runId, "tool_result", {
+        turn: state.turn,
+        toolId: impl.id,
+        status: "ok",
+        resultChars: serialised.length,
+      });
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: state.pendingToolUseId,
+        content: serialised,
+      });
+    } catch (err) {
+      const msg =
+        err instanceof ToolExecutionError ? err.message : sanitiseError(err);
+      appendEvent(runId, "tool_result", {
+        turn: state.turn,
+        toolId: impl.id,
+        status: "error",
+        message: msg,
+      });
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: state.pendingToolUseId,
+        content: `Tool call failed: ${msg}`,
+        is_error: true,
+      });
+    }
+  }
+
+  messages.push({ role: "user", content: toolResults });
+  markRunRunning(runId);
+
+  return driveLoop({
+    run,
+    agent,
+    tenantId,
+    messages,
+    startTurn: state.turn + 1,
+    carriedCost: state.totalCostCents,
+  });
+}
+
+/* ------------------------------------------------------------ shared driver */
+
+interface DriveLoopInput {
+  run: RunRow;
+  agent: Agent;
+  tenantId: string;
+  messages: LlmMessage[];
+  startTurn: number;
+  carriedCost: number;
+}
+
+interface PauseState {
+  messages: LlmMessage[];
+  turn: number;
+  totalCostCents: number;
+  pendingToolUseId: string;
+  pendingToolImplId: string;
+  pendingToolInput: Record<string, unknown>;
+  priorToolResults: Array<{
+    type: "tool_result";
+    tool_use_id: string;
+    content: string;
+    is_error?: boolean;
+  }>;
+  finalText: string;
+}
+
+async function driveLoop(input: DriveLoopInput): Promise<RunAgentOutcome> {
+  const { run, agent, tenantId } = input;
+  const messages = input.messages;
+
+  const systemPrompt = buildSystemPrompt(agent);
+  const selectedTools = selectToolsForAgent(agent);
+  const llmTools: LlmTool[] = selectedTools.map((t) => ({
+    name: toAnthropicName(t.id),
+    description: t.description,
+    input_schema: t.anthropicInputSchema,
+  }));
+  const anthropicNameToImpl = new Map<string, ToolImpl>(
+    selectedTools.map((t) => [toAnthropicName(t.id), t]),
+  );
+
+  let totalCostCents = input.carriedCost;
+  let finalText = "";
+
   try {
-    const resolved = await runLoop(agent, input.userInput, run.id, tenantId);
-    const summary = truncate(resolved.text, 500);
-    appendEvent(run.id, "run_completed", {
-      totalCostCents: resolved.costCents,
-      turns: resolved.turns,
-      summary,
-    });
-    const finished = finishRun({
-      runId: run.id,
-      status: "succeeded",
-      totalCostCents: resolved.costCents,
-      summary,
-    });
-    return {
-      run: finished ?? { ...run, status: "succeeded", summary },
-      responseText: resolved.text,
-    };
+    for (let turn = input.startTurn; turn <= MAX_TURNS; turn++) {
+      appendEvent(run.id, "llm_call", {
+        model: "claude-sonnet-4-6",
+        turn,
+        toolCount: llmTools.length,
+      });
+
+      const result = await withTimeout(
+        llmTurn({
+          system: systemPrompt,
+          messages,
+          tools: llmTools,
+          maxTokens: 1024,
+        }),
+        LLM_TIMEOUT_MS,
+        "LLM call timed out after 60s.",
+      );
+
+      const costCents = estimateCostCents(result.usage);
+      totalCostCents += costCents;
+
+      appendEvent(run.id, "llm_response", {
+        turn,
+        stopReason: result.stopReason,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        costCents,
+        blockCount: result.content.length,
+      });
+
+      messages.push({ role: "assistant", content: result.content });
+
+      const toolUses = result.content.filter(
+        (b): b is Extract<typeof b, { type: "tool_use" }> =>
+          b.type === "tool_use",
+      );
+      const textBlocks = result.content.filter(
+        (b): b is Extract<typeof b, { type: "text" }> => b.type === "text",
+      );
+      if (textBlocks.length > 0) {
+        finalText = textBlocks.map((b) => b.text).join("\n\n");
+      }
+
+      if (result.stopReason === "end_turn" || toolUses.length === 0) {
+        return finaliseDone({
+          run,
+          text: finalText,
+          costCents: totalCostCents,
+          turns: turn,
+        });
+      }
+
+      if (result.stopReason !== "tool_use") {
+        throw new RuntimeError(
+          `Unexpected stop reason: ${result.stopReason}`,
+          "llm_failed",
+        );
+      }
+
+      const toolResults: Array<{
+        type: "tool_result";
+        tool_use_id: string;
+        content: string;
+        is_error?: boolean;
+      }> = [];
+
+      for (const use of toolUses) {
+        const impl = anthropicNameToImpl.get(use.name);
+        if (!impl) {
+          appendEvent(run.id, "tool_call", {
+            turn,
+            toolName: use.name,
+            status: "rejected_unknown",
+          });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: use.id,
+            content: `Tool '${use.name}' is not available to you.`,
+            is_error: true,
+          });
+          continue;
+        }
+
+        const parsed = impl.inputSchema.safeParse(use.input);
+        if (!parsed.success || parsed.data === undefined) {
+          const msg = parsed.error?.message ?? "input validation failed";
+          appendEvent(run.id, "tool_call", {
+            turn,
+            toolId: impl.id,
+            status: "input_invalid",
+            message: msg,
+          });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: use.id,
+            content: `Input validation failed: ${msg}. Please retry with valid input.`,
+            is_error: true,
+          });
+          continue;
+        }
+
+        // Trust-mode gate — mutating tools pause the run for approval
+        // in draft/ask modes.
+        if (impl.isMutating && agent.trustMode !== "autopilot") {
+          const approval = createApproval({
+            runId: run.id,
+            tenantId,
+            channel: "admin_ui",
+            question: approvalQuestion(agent, impl, parsed.data),
+            proposedAction: {
+              toolId: impl.id,
+              input: parsed.data as unknown as Record<string, unknown>,
+            },
+          });
+          appendEvent(run.id, "approval_required", {
+            turn,
+            toolId: impl.id,
+            approvalId: approval.id,
+            channel: approval.channel,
+          });
+          const pauseState: PauseState = {
+            messages,
+            turn,
+            totalCostCents,
+            pendingToolUseId: use.id,
+            pendingToolImplId: impl.id,
+            pendingToolInput: parsed.data as unknown as Record<string, unknown>,
+            priorToolResults: toolResults,
+            finalText,
+          };
+          const paused = pauseRun({
+            runId: run.id,
+            pauseStateJson: JSON.stringify(pauseState),
+            summary: `Awaiting approval: ${approval.question}`,
+          });
+          return {
+            kind: "needs_approval",
+            run: paused ?? run,
+            approvalId: approval.id,
+            question: approval.question,
+            proposedAction: {
+              toolId: impl.id,
+              input: parsed.data as unknown as Record<string, unknown>,
+            },
+          };
+        }
+
+        appendEvent(run.id, "tool_call", {
+          turn,
+          toolId: impl.id,
+          input: parsed.data as unknown as Record<string, unknown>,
+        });
+
+        try {
+          const ctx: ToolContext = { agent, runId: run.id, tenantId };
+          const out = await impl.execute(parsed.data, ctx);
+          const serialised = truncate(
+            JSON.stringify(out),
+            MAX_TOOL_RESULT_CHARS,
+          );
+          appendEvent(run.id, "tool_result", {
+            turn,
+            toolId: impl.id,
+            status: "ok",
+            resultChars: serialised.length,
+          });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: use.id,
+            content: serialised,
+          });
+        } catch (err) {
+          const msg =
+            err instanceof ToolExecutionError
+              ? err.message
+              : sanitiseError(err);
+          appendEvent(run.id, "tool_result", {
+            turn,
+            toolId: impl.id,
+            status: "error",
+            message: msg,
+          });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: use.id,
+            content: `Tool call failed: ${msg}`,
+            is_error: true,
+          });
+        }
+      }
+
+      messages.push({ role: "user", content: toolResults });
+    }
+
+    throw new RuntimeError(
+      `Run exceeded ${MAX_TURNS} LLM turns — aborting to prevent runaway loops.`,
+      "too_many_turns",
+    );
   } catch (err) {
     const runtimeErr =
       err instanceof RuntimeError
@@ -143,201 +528,66 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     finishRun({
       runId: run.id,
       status: "failed",
-      totalCostCents: 0,
+      totalCostCents: totalCostCents,
       summary: runtimeErr.message,
     });
     throw runtimeErr;
   }
 }
 
-/* -------------------------------------------------------------- internals */
-
-async function runLoop(
-  agent: Agent,
-  userMessage: string,
-  runId: string,
-  tenantId: string,
-): Promise<{ text: string; costCents: number; turns: number }> {
-  const systemPrompt = buildSystemPrompt(agent);
-  const selectedTools = selectToolsForAgent(agent);
-  const llmTools: LlmTool[] = selectedTools.map((t) => ({
-    name: toAnthropicName(t.id),
-    description: t.description,
-    input_schema: t.anthropicInputSchema,
-  }));
-  const anthropicNameToImpl = new Map<string, ToolImpl>(
-    selectedTools.map((t) => [toAnthropicName(t.id), t]),
-  );
-
-  const messages: LlmMessage[] = [{ role: "user", content: userMessage }];
-  let totalCostCents = 0;
-  let finalText = "";
-
-  for (let turn = 1; turn <= MAX_TURNS; turn++) {
-    appendEvent(runId, "llm_call", {
-      model: "claude-sonnet-4-6",
-      turn,
-      toolCount: llmTools.length,
-    });
-
-    const result = await withTimeout(
-      llmTurn({
-        system: systemPrompt,
-        messages,
-        tools: llmTools,
-        maxTokens: 1024,
-      }),
-      LLM_TIMEOUT_MS,
-      "LLM call timed out after 60s.",
-    );
-
-    const costCents = estimateCostCents(result.usage);
-    totalCostCents += costCents;
-
-    appendEvent(runId, "llm_response", {
-      turn,
-      stopReason: result.stopReason,
-      inputTokens: result.usage.inputTokens,
-      outputTokens: result.usage.outputTokens,
-      costCents,
-      blockCount: result.content.length,
-    });
-
-    // Accumulate the assistant turn — even if tool_use follows, the
-    // assistant's tool_use block must be preserved in the history so
-    // the tool_result can reference its id.
-    messages.push({ role: "assistant", content: result.content });
-
-    const toolUses = result.content.filter(
-      (b): b is Extract<typeof b, { type: "tool_use" }> =>
-        b.type === "tool_use",
-    );
-    const textBlocks = result.content.filter(
-      (b): b is Extract<typeof b, { type: "text" }> => b.type === "text",
-    );
-    // Always carry forward the latest text reply — the final one is what
-    // the UI renders when stop_reason === end_turn.
-    if (textBlocks.length > 0) {
-      finalText = textBlocks.map((b) => b.text).join("\n\n");
-    }
-
-    if (result.stopReason === "end_turn" || toolUses.length === 0) {
-      return { text: finalText, costCents: totalCostCents, turns: turn };
-    }
-
-    if (result.stopReason !== "tool_use") {
-      throw new RuntimeError(
-        `Unexpected stop reason: ${result.stopReason}`,
-        "llm_failed",
-      );
-    }
-
-    // Execute each tool call and append tool_result blocks.
-    const toolResults: Array<{
-      type: "tool_result";
-      tool_use_id: string;
-      content: string;
-      is_error?: boolean;
-    }> = [];
-
-    for (const use of toolUses) {
-      const impl = anthropicNameToImpl.get(use.name);
-      if (!impl) {
-        appendEvent(runId, "tool_call", {
-          turn,
-          toolName: use.name,
-          status: "rejected_unknown",
-        });
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: use.id,
-          content: `Tool '${use.name}' is not available to you.`,
-          is_error: true,
-        });
-        continue;
-      }
-      // Trust-mode gate — mutating tools only fire in autopilot in 2.2a.
-      if (impl.isMutating && agent.trustMode !== "autopilot") {
-        throw new RuntimeError(
-          `Tool '${impl.id}' mutates state; trust mode '${agent.trustMode}' requires an approval flow (Phase 2.3).`,
-          "approval_required",
-        );
-      }
-
-      const parsed = impl.inputSchema.safeParse(use.input);
-      if (!parsed.success || parsed.data === undefined) {
-        const msg = parsed.error?.message ?? "input validation failed";
-        appendEvent(runId, "tool_call", {
-          turn,
-          toolId: impl.id,
-          status: "input_invalid",
-          message: msg,
-        });
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: use.id,
-          content: `Input validation failed: ${msg}. Please retry with valid input.`,
-          is_error: true,
-        });
-        continue;
-      }
-
-      appendEvent(runId, "tool_call", {
-        turn,
-        toolId: impl.id,
-        input: parsed.data as unknown as Record<string, unknown>,
-      });
-
-      try {
-        const ctx: ToolContext = {
-          agent,
-          runId,
-          tenantId,
-        };
-        const out = await impl.execute(parsed.data, ctx);
-        const serialised = truncate(JSON.stringify(out), MAX_TOOL_RESULT_CHARS);
-        appendEvent(runId, "tool_result", {
-          turn,
-          toolId: impl.id,
-          status: "ok",
-          resultChars: serialised.length,
-        });
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: use.id,
-          content: serialised,
-        });
-      } catch (err) {
-        const msg =
-          err instanceof ToolExecutionError ? err.message : sanitiseError(err);
-        appendEvent(runId, "tool_result", {
-          turn,
-          toolId: impl.id,
-          status: "error",
-          message: msg,
-        });
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: use.id,
-          content: `Tool call failed: ${msg}`,
-          is_error: true,
-        });
-      }
-    }
-
-    messages.push({ role: "user", content: toolResults });
-  }
-
-  throw new RuntimeError(
-    `Run exceeded ${MAX_TURNS} LLM turns — aborting to prevent runaway loops.`,
-    "too_many_turns",
-  );
+function finaliseDone(opts: {
+  run: RunRow;
+  text: string;
+  costCents: number;
+  turns: number;
+}): RunAgentOutcome {
+  const summary = truncate(opts.text, 500);
+  appendEvent(opts.run.id, "run_completed", {
+    totalCostCents: opts.costCents,
+    turns: opts.turns,
+    summary,
+  });
+  const finished = finishRun({
+    runId: opts.run.id,
+    status: "succeeded",
+    totalCostCents: opts.costCents,
+    summary,
+  });
+  return {
+    kind: "done",
+    run: finished ?? { ...opts.run, status: "succeeded", summary },
+    responseText: opts.text,
+  };
 }
+
+/**
+ * Compose the plain-English question shown in the approval queue.
+ * Kept deliberately short — the UI layer adds agent + run metadata.
+ */
+function approvalQuestion(
+  agent: Agent,
+  impl: ToolImpl,
+  input: unknown,
+): string {
+  if (impl.id === "fibery.create") {
+    const i = input as { type?: string; name?: string };
+    return `${agent.name} wants to create a ${i.type ?? "?"} entity named "${i.name ?? "?"}".`;
+  }
+  if (impl.id === "slack.post-to-channel") {
+    const i = input as { channelId?: string };
+    return `${agent.name} wants to post in Slack channel ${i.channelId ?? "?"}.`;
+  }
+  if (impl.id === "slack.dm") {
+    const i = input as { userId?: string };
+    return `${agent.name} wants to DM Slack user ${i.userId ?? "?"}.`;
+  }
+  return `${agent.name} wants to run tool '${impl.id}'.`;
+}
+
+/* --------------------------------------------------------------- internals */
 
 function selectToolsForAgent(agent: Agent): ToolImpl[] {
   const allowlist = new Set(agent.toolAllowlist);
-  // Filter happens in CODE, before any LLM call. Even if the LLM later
-  // invokes a tool outside the allowlist, tool-registry lookup gates it again.
   return allToolImpls().filter((t) => allowlist.has(t.id));
 }
 
@@ -392,3 +642,7 @@ function sanitiseError(err: unknown): string {
         : "Unknown error";
   return raw.replace(/sk-[A-Za-z0-9_-]{8,}/g, "[redacted]").slice(0, 300);
 }
+
+// Unused, but re-exported so a future approval-ownership check can load
+// by id without another approval-store import hop.
+export { getApproval };

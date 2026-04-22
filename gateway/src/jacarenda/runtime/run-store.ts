@@ -51,6 +51,7 @@ export interface RunRow {
   completedAt: number | null;
   totalCostCents: number;
   summary: string;
+  pauseStateJson: string | null;
 }
 
 export interface RunEventRow {
@@ -82,9 +83,40 @@ export function startRun(input: StartRunInput): RunRow {
     completedAt: null as number | null,
     totalCostCents: 0,
     summary: "",
+    pauseStateJson: null as string | null,
   };
   getJacarendaDb().insert(agentRuns).values(row).run();
   return row;
+}
+
+export interface PauseRunInput {
+  runId: string;
+  pauseStateJson: string;
+  summary: string;
+}
+
+/** Pauses the run in needs_approval state. Orchestrator is the only caller. */
+export function pauseRun(input: PauseRunInput): RunRow | null {
+  getJacarendaDb()
+    .update(agentRuns)
+    .set({
+      status: "needs_approval",
+      pauseStateJson: input.pauseStateJson,
+      summary: input.summary,
+    })
+    .where(eq(agentRuns.id, input.runId))
+    .run();
+  return getRun(input.runId);
+}
+
+/** Clears pauseStateJson and transitions a run back to running. Used on resume. */
+export function markRunRunning(runId: string): RunRow | null {
+  getJacarendaDb()
+    .update(agentRuns)
+    .set({ status: "running", pauseStateJson: null })
+    .where(eq(agentRuns.id, runId))
+    .run();
+  return getRun(runId);
 }
 
 export interface FinishRunInput {
@@ -136,6 +168,19 @@ export function listRunsForAgent(
     .limit(limit)
     .all();
   return rows as RunRow[];
+}
+
+/** Load a paused run's saved state. Returns null if run isn't paused or state is missing. */
+export function loadPauseState<T>(runId: string): T | null {
+  const run = getRun(runId);
+  if (!run || run.status !== "needs_approval" || !run.pauseStateJson) {
+    return null;
+  }
+  try {
+    return JSON.parse(run.pauseStateJson) as T;
+  } catch {
+    return null;
+  }
 }
 
 export function appendEvent(

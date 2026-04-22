@@ -59,6 +59,9 @@ export const agentRuns = sqliteTable(
     completedAt: integer("completed_at"),
     totalCostCents: integer("total_cost_cents").notNull().default(0),
     summary: text("summary").notNull().default(""),
+    // Serialised loop state when status='needs_approval'. Null otherwise.
+    // JSON shape is internal to the orchestrator — callers never parse it.
+    pauseStateJson: text("pause_state_json"),
   },
   (t) => [
     index("idx_agent_runs_agent").on(t.agentId),

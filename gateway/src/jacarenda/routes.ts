@@ -20,8 +20,13 @@ import {
 } from "./agent-store.js";
 import { TEMPLATES, getTemplate } from "./templates.js";
 import { TOOLS } from "./tools.js";
-import { listPendingApprovals } from "./approval-store.js";
-import { runAgent, RuntimeError } from "./runtime/orchestrator.js";
+import {
+  ApprovalAlreadyDecidedError,
+  decideApproval,
+  getApproval,
+  listPendingApprovals,
+} from "./approval-store.js";
+import { resumeAgent, runAgent, RuntimeError } from "./runtime/orchestrator.js";
 import { listEvents, listRunsForAgent, getRun } from "./runtime/run-store.js";
 
 function json(body: unknown, status = 200): Response {
@@ -185,16 +190,29 @@ export function createJacarendaRoutes(): RouteDefinition[] {
           return json({ error: "body.input (string) is required" }, 400);
         }
         try {
-          const result = await runAgent({
+          const outcome = await runAgent({
             agentId: params[0],
             userInput: body.input,
             triggeredBy: "manual",
             triggeredByActor: "admin",
           });
+          if (outcome.kind === "needs_approval") {
+            return json(
+              {
+                kind: "needs_approval",
+                run: outcome.run,
+                approvalId: outcome.approvalId,
+                question: outcome.question,
+                proposedAction: outcome.proposedAction,
+              },
+              202,
+            );
+          }
           return json(
             {
-              run: result.run,
-              response: result.responseText,
+              kind: "done",
+              run: outcome.run,
+              response: outcome.responseText,
             },
             200,
           );
@@ -224,6 +242,80 @@ export function createJacarendaRoutes(): RouteDefinition[] {
         const run = getRun(params[0]);
         if (!run) return json({ error: "not found" }, 404);
         return json({ run, events: listEvents(params[0]) });
+      },
+    },
+
+    // Decide on a pending approval — resumes the paused run synchronously.
+    // 409 if already decided; 404 if not found; 400 on bad body.
+    {
+      path: /^\/admin\/api\/jacarenda\/approvals\/([A-Za-z0-9-]+)\/decide$/,
+      method: "POST",
+      auth: "custom",
+      handler: async (req, params) => {
+        if (!requireAdminSession(req)) return unauthorized();
+        const body = await parseJson(req);
+        if (
+          !isPlainObject(body) ||
+          (body.decision !== "approved" && body.decision !== "rejected")
+        ) {
+          return json(
+            { error: "body.decision must be 'approved' or 'rejected'" },
+            400,
+          );
+        }
+        const approval = getApproval(params[0]);
+        if (!approval) {
+          return json({ error: "approval not found" }, 404);
+        }
+        const decidedBy =
+          (typeof body.decidedBy === "string" && body.decidedBy.slice(0, 80)) ||
+          "admin";
+
+        try {
+          decideApproval({
+            id: approval.id,
+            decision: body.decision as "approved" | "rejected",
+            decidedBy,
+          });
+        } catch (err) {
+          if (err instanceof ApprovalAlreadyDecidedError) {
+            return json({ error: err.message, code: "already_decided" }, 409);
+          }
+          throw err;
+        }
+
+        try {
+          const outcome = await resumeAgent(
+            approval.runId,
+            body.decision as "approved" | "rejected",
+            decidedBy,
+          );
+          if (outcome.kind === "needs_approval") {
+            return json(
+              {
+                kind: "needs_approval",
+                run: outcome.run,
+                approvalId: outcome.approvalId,
+                question: outcome.question,
+                proposedAction: outcome.proposedAction,
+              },
+              202,
+            );
+          }
+          return json(
+            {
+              kind: "done",
+              run: outcome.run,
+              response: outcome.responseText,
+            },
+            200,
+          );
+        } catch (err) {
+          if (err instanceof RuntimeError) {
+            return json({ error: err.message, code: err.code }, 500);
+          }
+          return json({ error: "internal error" }, 500);
+        }
       },
     },
   ];
