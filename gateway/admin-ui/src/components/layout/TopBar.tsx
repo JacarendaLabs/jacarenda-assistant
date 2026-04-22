@@ -65,7 +65,7 @@ export function TopBar({
           <img
             src="/admin/logo-256.png"
             alt=""
-            className="h-6 w-auto block -mt-0.5"
+            className="h-6 w-auto block -mt-3"
             aria-hidden="true"
           />
           <span className="font-inter font-semibold tracking-tight text-[15px]">
