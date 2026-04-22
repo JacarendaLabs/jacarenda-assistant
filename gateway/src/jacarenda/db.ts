@@ -58,3 +58,11 @@ export function getJacarendaDb(): JacarendaDb {
   }
   return db;
 }
+
+/**
+ * Test-only: drops the singleton so the next initJacarendaDb() picks up a
+ * new GATEWAY_SECURITY_DIR. Never call from production code.
+ */
+export function __resetJacarendaDbForTests(): void {
+  db = null;
+}
