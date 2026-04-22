@@ -22,7 +22,7 @@ single idempotent pass:
 Seeds:
   - Brand             : Jacarenda Labs
   - Service Line × 4  : Consultancy, Advisory, Development, Training
-  - Property × 2      : jacarendalabs.com, Vellum (assistant.jacarendalabs.com)
+  - Property × 2      : jacarendalabs.com, Jacarenda Assistant (assistant.jacarendalabs.com)
 
 Env:
   FIBERY_WORKSPACE_URL   https://jacarendalabs.fibery.io
@@ -456,7 +456,7 @@ SEEDS: dict[str, list[str]] = {
     "Services/Service Line": ["Consultancy", "Advisory", "Development", "Training"],
     "Product/Property": [
         "jacarendalabs.com",
-        "Vellum (assistant.jacarendalabs.com)",
+        "Jacarenda Assistant (assistant.jacarendalabs.com)",
     ],
 }
 

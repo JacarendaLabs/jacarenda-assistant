@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Mint a short-lived admin JWT for authenticating against the Vellum
- * assistant daemon HTTP API.
+ * Mint a short-lived admin JWT for authenticating against the assistant
+ * daemon HTTP API (Jacarenda Assistant — upstream identifiers below keep
+ * the `vellum` prefix for runtime compatibility; see UPSTREAM_SYNC.md).
  *
  * Use from inside the Fly machine:
  *   flyctl ssh console -a vellum-gateway -C \
@@ -16,7 +17,7 @@
  * Design:
  *   - Reads the HMAC signing key from disk (same key the daemon uses).
  *     Falls back across the daemon's known lookup paths so this script
- *     stays working if the key location shifts in a future Vellum release.
+ *     stays working if the key location shifts in a future upstream release.
  *   - Mints a JWT with `actor_client_v1` scope profile, which grants
  *     settings.read/write + chat.read/write + the other baseline scopes
  *     needed to POST integration configs.

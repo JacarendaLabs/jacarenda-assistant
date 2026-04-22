@@ -1,4 +1,9 @@
-# Vellum Assistant — Fly.io deployment
+# Jacarenda Assistant — Fly.io deployment
+
+> Fly app names (`vellum-gateway`, `vellum-assistant`, `vellum-ces`) and volume names
+> (`vellum_*`) keep the upstream-fork naming — renaming them requires creating new apps
+> and migrating secrets/volumes. Only visible in the Fly dashboard; the public domain
+> is `assistant.jacarendalabs.com`. See [`../../UPSTREAM_SYNC.md`](../../UPSTREAM_SYNC.md).
 
 Three-service deployment: a public **gateway**, an internal **assistant** runtime daemon, and an isolated **credential-executor** (CES).
 
@@ -25,7 +30,7 @@ Internet
 ## First-time deploy
 
 ```bash
-cd /Users/mccoy/vellum-assistant
+cd /Users/mccoy/jacarenda-assistant
 
 # 1. Create the apps (no deploy yet)
 flyctl apps create vellum-gateway   --org jacarenda-labs

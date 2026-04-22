@@ -1,9 +1,10 @@
 # Fibery Workspace Setup
 
 The canonical Jacarenda Labs business state lives in Fibery at
-[`jacarendalabs.fibery.io`](https://jacarendalabs.fibery.io). Vellum agents
-read from and write to it via the API; it's the org knowledge base. Agent
-*config* stays in the gateway's local DB — do not mirror it into Fibery.
+[`jacarendalabs.fibery.io`](https://jacarendalabs.fibery.io). Jacarenda
+Assistant agents read from and write to it via the API; it's the org
+knowledge base. Agent *config* stays in the gateway's local DB — do not
+mirror it into Fibery.
 
 This doc covers how to set the workspace up from scratch.
 
@@ -18,12 +19,12 @@ This doc covers how to set the workspace up from scratch.
 | **Marketing** | Campaign, Content, Channel Performance, Case Study, Testimonial, Press Mention |
 | **CRM** | Company, Contact, Lead, Opportunity |
 | **Accounting** | Invoice, Expense, Revenue Record, Vendor, Subscription |
-| **Product and Web** | Property, Feature, Release, Bug |
+| **Product** | Property, Feature, Release, Bug |
 | **Support** | Ticket, Reply, Knowledge Article, Known Issue |
 | **Operations** | SOP, Decision Log, Meeting Note |
 | **People** | Team Member |
 | **Strategy** | Objective, Key Result, Metric, Metric Reading |
-| **Legal and Contracts** | Contract, Legal Document |
+| **Legal** | Contract, Legal Document |
 
 Relations wire the spaces together (e.g. Campaign ↔ Service Line, Invoice ↔
 Company, Ticket ↔ Contact, Content ↔ Campaign). See
@@ -32,7 +33,7 @@ Company, Ticket ↔ Contact, Content ↔ Campaign). See
 **Seeded entities** (empty husks you fill in):
 - `Brand/Brand`: Jacarenda Labs
 - `Services/Service Line`: Consultancy · Advisory · Development · Training
-- `Product and Web/Property`: jacarendalabs.com · Vellum (assistant.jacarendalabs.com)
+- `Product/Property`: jacarendalabs.com · Jacarenda Assistant (assistant.jacarendalabs.com)
 
 ## First-time setup
 
@@ -63,12 +64,12 @@ Services
 Marketing
 CRM
 Accounting
-Product and Web
+Product
 Support
 Operations
 People
 Strategy
-Legal and Contracts
+Legal
 ```
 
 ### 3. Run the scaffold script

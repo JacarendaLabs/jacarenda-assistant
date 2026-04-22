@@ -1,4 +1,5 @@
-# Combined Vellum container: runs CES + assistant daemon + gateway in one machine.
+# Combined Jacarenda Assistant container: runs CES + assistant daemon + gateway in one machine.
+# (Internal paths keep the upstream `.vellum` / `vellum` naming — see UPSTREAM_SYNC.md.)
 #
 # Shared state: single volume mounted at /data. The entrypoint symlinks
 # /root/.vellum -> /data/vellum, so all three processes see:

@@ -72,7 +72,7 @@ The admin command-center SPA served at `/admin`:
 
 ## Fibery integration
 
-Business state (brand, services, clients, campaigns, invoices, contracts, etc.) lives in Fibery at `jacarendalabs.fibery.io`. Vellum agents read from / write to it via the API. Agent _config_ (soul, guardrails, tools, triggers) stays in the gateway's local DB — do not mirror it into Fibery.
+Business state (brand, services, clients, campaigns, invoices, contracts, etc.) lives in Fibery at `jacarendalabs.fibery.io`. Jacarenda Assistant agents read from / write to it via the API. Agent _config_ (soul, guardrails, tools, triggers) stays in the gateway's local DB — do not mirror it into Fibery.
 
 - **Setup script:** `scripts/setup-fibery-marketing.py` — idempotent, re-runnable.
 - **Setup guide:** [`FIBERY_SETUP.md`](../FIBERY_SETUP.md) at repo root (prerequisite UI steps + script usage).

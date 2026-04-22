@@ -1,5 +1,7 @@
-# Combined Vellum deployment: assistant daemon + gateway in one Fly machine.
+# Combined Jacarenda Assistant deployment: assistant daemon + gateway in one Fly machine.
 # Replaces the separate vellum-gateway / vellum-assistant / vellum-ces apps.
+# (Fly app name stays `vellum-gateway` — renaming requires migrating secrets+volume.
+#  See UPSTREAM_SYNC.md.)
 #
 # Deploy from repo root:
 #   flyctl deploy --config deploy/fly/combined.toml \
