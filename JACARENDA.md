@@ -61,13 +61,54 @@ for 6–12 weeks before onboarding a second tenant.
 |---|---|---|
 | 1 | Config only — schema, CRUD API, wizard, detail, approvals scaffold, test-drive stub | ✅ Shipped |
 | 2.1a | Runtime orchestrator (non-tool), security policy, live Test drive | ✅ Shipped |
-| 2.2 | Tool library — `fibery.query`, `fibery.create`, `slack.post-to-channel`, `slack.dm`. Allowlist + Zod + CES-gated creds | ⏭ Next |
+| 2.2a | Tool machinery + `fibery.query` (read-only, lean) | ✅ Shipped |
+| 2.2b | `fibery.create` — trust-mode gate triggers for real | ⏭ Next |
+| 2.2c | `slack.post-to-channel`, `slack.dm` — CES-gated creds | |
 | 2.3 | Approval gate + Slack Block Kit dispatch + callback resume | |
 | 2.4 | Scheduler tick loop — weekly / daily triggers | |
 | 2.5 | Spend-cap hard enforcement + cost tracking | |
 | 3 | Fibery bridge — webhook receiver, `agent_memory` sync (org scope) | |
+| **3.5** | **Content intelligence** — see below | |
 | 4 | Channel-first ops — WhatsApp / email inline interactions | |
 | 5 | Template fanout — CS Triage, Bookkeeper, Sales Nurture, Ops Assistant, etc. | |
+
+### Phase 3.5 — Content intelligence (deferred commitment)
+
+Raised 2026-04-22 while scoping Phase 2.2: for the Social Media Manager
+to write posts **informed by past performance** (what worked, what
+didn't, recency trends) we need data + retrieval that doesn't exist
+yet. Recorded here so it doesn't get lost between now and when we pick
+it up.
+
+Blocker chain — roughly in build order:
+
+1. **Content corpus ingestion.** Bulk-import the last 6–12 months of
+   Jacarenda Labs' LinkedIn + X output into `Marketing/Content` entities
+   (body, channel, published_at). Either a one-off import script or a
+   scheduled sync against the LinkedIn / X APIs. Until this exists
+   there is nothing for the agent to learn from.
+2. **Performance ingestion.** LinkedIn Analytics + X API →
+   `Marketing/Channel Performance` (impressions, engagements, clicks,
+   followers gained). Either a scheduled poller or webhooks. Without
+   this, "informed by performance" is just vibes.
+3. **Richer Fibery reads.** Extend `fibery.query` (or sibling
+   `fibery.get`) to return selected fields including `Body` and
+   `Performance Notes`. Hard-cap response bytes so a single run
+   can't pull 50 KB of context. **Depends on Phase 2.5 (spend caps)
+   being live first** — otherwise a single greedy run burns cash.
+4. **Retrieval, not just fetch.** Phase 3's Fibery → `agent_memory`
+   sync with embeddings lets the agent do semantic retrieval ("top-
+   performing posts about masterclasses") rather than pulling
+   everything. Hybrid retrieval (dense + sparse) over the `agent_memory`
+   table is what upstream Vellum's memory engine is built for.
+5. **Post-back loop.** Every draft the agent produces is saved to
+   Fibery via `fibery.create` (Phase 2.2b). Three months after that
+   lands the corpus grows by itself. Published posts gain performance
+   records over time and the retrieval loop closes.
+
+**Parallel track, non-code:** start logging posts into Fibery now
+(manually or via a lightweight sync) so by the time the retrieval
+layer ships, the corpus is already there.
 
 ## Strategic principles locked in
 
