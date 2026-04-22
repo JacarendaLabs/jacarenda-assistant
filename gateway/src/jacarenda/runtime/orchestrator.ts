@@ -53,6 +53,11 @@ import {
   type ToolContext,
   type ToolImpl,
 } from "./tool-context.js";
+import { dispatchApprovalToSlack } from "./slack-approval-dispatcher.js";
+
+const JACARENDA_PUBLIC_BASE_URL =
+  process.env.JACARENDA_PUBLIC_BASE_URL ??
+  "https://assistant.jacarendalabs.com";
 
 const MAX_INPUT_CHARS = 4000;
 const LLM_TIMEOUT_MS = 60_000;
@@ -438,6 +443,38 @@ async function driveLoop(input: DriveLoopInput): Promise<RunAgentOutcome> {
             approvalId: approval.id,
             channel: approval.channel,
           });
+
+          // Outbound Slack notification (Phase 2.3b1). Non-fatal —
+          // run stays paused regardless; we just lose the push if Slack
+          // is down or the channel isn't configured.
+          //
+          // Fire-and-log: we await dispatch (so the returned 202 reflects
+          // whether Slack got the message) but don't throw on failure.
+          const dispatch = await dispatchApprovalToSlack({
+            agent,
+            approvalId: approval.id,
+            question: approval.question,
+            proposedAction: {
+              toolId: impl.id,
+              input: parsed.data as unknown as Record<string, unknown>,
+            },
+            publicBaseUrl: JACARENDA_PUBLIC_BASE_URL,
+          });
+          if (dispatch.dispatched) {
+            appendEvent(run.id, "info", {
+              kind: "approval_notified",
+              via: "slack",
+              slackTs: dispatch.slackTs,
+            });
+          } else if (dispatch.skipReason !== "channel_not_configured") {
+            // Only noisy when a config IS present but dispatch failed.
+            // 'not configured' is the expected no-op state.
+            appendEvent(run.id, "info", {
+              kind: "approval_notify_failed",
+              skipReason: dispatch.skipReason,
+              error: dispatch.error,
+            });
+          }
           const pauseState: PauseState = {
             messages,
             turn,
