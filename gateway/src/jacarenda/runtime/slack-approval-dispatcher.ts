@@ -36,6 +36,13 @@ export interface DispatchApprovalInput {
   question: string;
   proposedAction: { toolId: string; input: Record<string, unknown> };
   publicBaseUrl: string;
+  /**
+   * When set (format `<channelId>:<threadTs>`), post the approval card
+   * as a reply in that thread instead of the global approvals channel.
+   * Phase 2.3c1 — the PA routes approvals back into the originating
+   * Slack conversation so the operator decides in-context.
+   */
+  slackThreadTs?: string;
 }
 
 export interface DispatchResult {
@@ -50,7 +57,14 @@ const SLACK_TIMEOUT_MS = 10_000;
 export async function dispatchApprovalToSlack(
   input: DispatchApprovalInput,
 ): Promise<DispatchResult> {
-  const channelId = process.env.JACARENDA_SLACK_APPROVALS_CHANNEL?.trim();
+  // Prefer the originating Slack thread when the run was triggered
+  // from one — approvals post inline with the conversation. Fall back
+  // to the global approvals channel otherwise.
+  const thread = parseThreadRef(input.slackThreadTs);
+  const globalChannelId = process.env.JACARENDA_SLACK_APPROVALS_CHANNEL?.trim();
+  const channelId = thread?.channelId ?? globalChannelId;
+  const threadTs = thread?.threadTs;
+
   if (!channelId) {
     return { dispatched: false, skipReason: "channel_not_configured" };
   }
@@ -87,6 +101,7 @@ export async function dispatchApprovalToSlack(
         blocks,
         unfurl_links: false,
         unfurl_media: false,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
       }),
       signal: controller.signal,
     });
@@ -205,6 +220,23 @@ function buildApprovalBlocks(input: BuildBlocksInput): unknown[] {
       ],
     },
   ];
+}
+
+/**
+ * Split a `<channelId>:<threadTs>` ref into its parts. Returns null
+ * when the ref is missing or malformed — the caller should fall back to
+ * the global approvals channel in that case.
+ */
+function parseThreadRef(
+  ref: string | undefined,
+): { channelId: string; threadTs: string } | null {
+  if (!ref) return null;
+  const idx = ref.indexOf(":");
+  if (idx <= 0 || idx >= ref.length - 1) return null;
+  return {
+    channelId: ref.slice(0, idx),
+    threadTs: ref.slice(idx + 1),
+  };
 }
 
 /**

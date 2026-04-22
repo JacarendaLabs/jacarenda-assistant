@@ -1482,6 +1482,36 @@ async function main() {
         // is reset for this assistant (fire-and-forget).
         notifyRecordActivity();
 
+        // Jacarenda Personal Assistant claim (Phase 2.3c1). When
+        // `JACARENDA_SLACK_DEFAULT_AGENT_ID` is set and the event is a
+        // DM or @mention (not an edit or callback click), the PA owns
+        // the message and the upstream daemon never sees it. Anything
+        // else falls through so the existing assistant flow keeps
+        // working.
+        if (process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID?.trim()) {
+          const isEdit = !!normalized.event.message.isEdit;
+          const isCallback = !!normalized.event.message.callbackData;
+          const hasActor = !!normalized.event.actor.actorExternalId;
+          const rawType = normalized.event.raw["type"];
+          const isDm = normalized.event.source.chatType === "im";
+          const isAppMention =
+            typeof rawType === "string" && rawType === "app_mention";
+          const paClaims =
+            hasActor && !isEdit && !isCallback && (isDm || isAppMention);
+          if (paClaims) {
+            (async () => {
+              try {
+                const mod =
+                  await import("./jacarenda/runtime/slack-inbound.js");
+                await mod.runPersonalAssistantForSlackEvent(normalized);
+              } catch (err) {
+                log.warn({ err }, "Jacarenda PA runner crashed");
+              }
+            })();
+            return;
+          }
+        }
+
         const { threadTs, channel } = normalized;
         const params = new URLSearchParams({ channel });
         if (threadTs) params.set("threadTs", threadTs);

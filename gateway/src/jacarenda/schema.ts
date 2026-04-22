@@ -62,10 +62,16 @@ export const agentRuns = sqliteTable(
     // Serialised loop state when status='needs_approval'. Null otherwise.
     // JSON shape is internal to the orchestrator — callers never parse it.
     pauseStateJson: text("pause_state_json"),
+    // Originating Slack thread for channel-triggered runs, in
+    // `<channelId>:<threadTs>` form. Used to chain consecutive messages
+    // in the same Slack thread as a single conversation (Phase 2.3c1 —
+    // thread continuity) and to route approvals back into the thread.
+    slackThreadTs: text("slack_thread_ts"),
   },
   (t) => [
     index("idx_agent_runs_agent").on(t.agentId),
     index("idx_agent_runs_tenant_started").on(t.tenantId, t.startedAt),
+    index("idx_agent_runs_slack_thread").on(t.slackThreadTs, t.startedAt),
   ],
 );
 
@@ -96,6 +102,11 @@ export const agentApprovals = sqliteTable(
     // slack | whatsapp | telegram | admin_ui
     channel: text("channel").notNull(),
     externalMessageId: text("external_message_id"),
+    // When the run was triggered from a Slack thread, the dispatcher
+    // prefers to reply-in-thread instead of posting to the global
+    // approvals channel. Null = no originating thread → global channel.
+    // Format: "<channelId>:<threadTs>" for portability across workspaces.
+    slackThreadTs: text("slack_thread_ts"),
     question: text("question").notNull(),
     proposedActionJson: text("proposed_action_json").notNull().default("{}"),
     // pending | approved | rejected | expired

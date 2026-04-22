@@ -27,6 +27,7 @@ export interface ApprovalWithAgent {
   agentTemplateId: string;
   channel: string;
   externalMessageId: string | null;
+  slackThreadTs: string | null;
   question: string;
   proposedAction: Record<string, unknown>;
   decision: "pending" | "approved" | "rejected" | "expired";
@@ -55,6 +56,7 @@ export function listPendingApprovals(
       runId: agentApprovals.runId,
       channel: agentApprovals.channel,
       externalMessageId: agentApprovals.externalMessageId,
+      slackThreadTs: agentApprovals.slackThreadTs,
       question: agentApprovals.question,
       proposedActionJson: agentApprovals.proposedActionJson,
       decision: agentApprovals.decision,
@@ -85,6 +87,7 @@ export function listPendingApprovals(
     agentTemplateId: r.agentTemplateId,
     channel: r.channel,
     externalMessageId: r.externalMessageId,
+    slackThreadTs: r.slackThreadTs,
     question: r.question,
     proposedAction: safeJsonObject(r.proposedActionJson),
     decision: r.decision as ApprovalWithAgent["decision"],
@@ -102,6 +105,7 @@ export interface ApprovalRow {
   tenantId: string;
   channel: string;
   externalMessageId: string | null;
+  slackThreadTs: string | null;
   question: string;
   proposedActionJson: string;
   decision: "pending" | "approved" | "rejected" | "expired";
@@ -115,6 +119,12 @@ export interface CreateApprovalInput {
   tenantId?: string;
   channel: "admin_ui" | "slack" | "whatsapp" | "telegram";
   externalMessageId?: string;
+  /**
+   * Slack originating thread, in `<channelId>:<threadTs>` form. When
+   * present, the dispatcher replies in this thread instead of posting
+   * to the global approvals channel. Ignored for non-Slack channels.
+   */
+  slackThreadTs?: string;
   question: string;
   proposedAction: Record<string, unknown>;
 }
@@ -128,6 +138,7 @@ export function createApproval(input: CreateApprovalInput): ApprovalRow {
     tenantId: input.tenantId ?? DEFAULT_TENANT_ID,
     channel: input.channel,
     externalMessageId: input.externalMessageId ?? null,
+    slackThreadTs: input.slackThreadTs ?? null,
     question: input.question,
     proposedActionJson: JSON.stringify(input.proposedAction),
     decision: "pending" as const,

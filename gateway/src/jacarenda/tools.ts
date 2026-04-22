@@ -85,6 +85,15 @@ export const TOOLS: ToolSpec[] = [
     category: "messaging",
     riskTier: 3,
   },
+  {
+    id: "memory.recall",
+    label: "Recall memory",
+    description: "Read-only lookup over the agent's memory notebook.",
+    plainEnglish:
+      "Can look up what the agent remembers about you, the business, and past conversations. Read-only — it cannot change or forget anything.",
+    category: "data",
+    riskTier: 1,
+  },
 ];
 
 export function getTool(id: string): ToolSpec | undefined {

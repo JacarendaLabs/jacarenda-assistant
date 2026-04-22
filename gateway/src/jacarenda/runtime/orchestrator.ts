@@ -70,6 +70,12 @@ export interface RunAgentInput {
   userInput: string;
   triggeredBy: TriggeredBy;
   triggeredByActor?: string;
+  /**
+   * Originating Slack thread context (Phase 2.3c1). When present, any
+   * approval the run creates is routed back to this thread instead of
+   * the global approvals channel. Format: `<channelId>:<threadTs>`.
+   */
+  slackThreadTs?: string;
 }
 
 export type RunAgentOutcome =
@@ -129,6 +135,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutcome> {
     tenantId,
     triggeredBy: input.triggeredBy,
     triggeredByActor: input.triggeredByActor,
+    slackThreadTs: input.slackThreadTs,
   });
 
   appendEvent(run.id, "run_started", {
@@ -149,6 +156,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutcome> {
     messages: initialMessages,
     startTurn: 1,
     carriedCost: 0,
+    slackThreadTs: input.slackThreadTs,
   });
 }
 
@@ -274,6 +282,7 @@ export async function resumeAgent(
     messages,
     startTurn: state.turn + 1,
     carriedCost: state.totalCostCents,
+    slackThreadTs: state.slackThreadTs,
   });
 }
 
@@ -286,6 +295,8 @@ interface DriveLoopInput {
   messages: LlmMessage[];
   startTurn: number;
   carriedCost: number;
+  /** Originating Slack thread for approval routing; see RunAgentInput. */
+  slackThreadTs?: string;
 }
 
 interface PauseState {
@@ -302,6 +313,9 @@ interface PauseState {
     is_error?: boolean;
   }>;
   finalText: string;
+  /** Preserved across pause/resume so subsequent approvals in the same
+   * run still route back to the originating Slack thread. */
+  slackThreadTs?: string;
 }
 
 async function driveLoop(input: DriveLoopInput): Promise<RunAgentOutcome> {
@@ -430,7 +444,8 @@ async function driveLoop(input: DriveLoopInput): Promise<RunAgentOutcome> {
           const approval = createApproval({
             runId: run.id,
             tenantId,
-            channel: "admin_ui",
+            channel: input.slackThreadTs ? "slack" : "admin_ui",
+            slackThreadTs: input.slackThreadTs,
             question: approvalQuestion(agent, impl, parsed.data),
             proposedAction: {
               toolId: impl.id,
@@ -459,6 +474,7 @@ async function driveLoop(input: DriveLoopInput): Promise<RunAgentOutcome> {
               input: parsed.data as unknown as Record<string, unknown>,
             },
             publicBaseUrl: JACARENDA_PUBLIC_BASE_URL,
+            slackThreadTs: input.slackThreadTs,
           });
           if (dispatch.dispatched) {
             appendEvent(run.id, "info", {
@@ -484,6 +500,7 @@ async function driveLoop(input: DriveLoopInput): Promise<RunAgentOutcome> {
             pendingToolInput: parsed.data as unknown as Record<string, unknown>,
             priorToolResults: toolResults,
             finalText,
+            slackThreadTs: input.slackThreadTs,
           };
           const paused = pauseRun({
             runId: run.id,

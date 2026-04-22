@@ -9,6 +9,7 @@
 import type { ToolImpl } from "./tool-context.js";
 import { fiberyCreateTool } from "./tools/fibery-create.js";
 import { fiberyQueryTool } from "./tools/fibery-query.js";
+import { memoryRecallTool } from "./tools/memory-recall.js";
 import { slackDmTool } from "./tools/slack-dm.js";
 import { slackPostToChannelTool } from "./tools/slack-post-to-channel.js";
 
@@ -17,6 +18,7 @@ const TOOL_IMPLS: ToolImpl[] = [
   fiberyCreateTool,
   slackPostToChannelTool,
   slackDmTool,
+  memoryRecallTool,
 ];
 
 const BY_ID: Map<string, ToolImpl> = new Map(TOOL_IMPLS.map((t) => [t.id, t]));

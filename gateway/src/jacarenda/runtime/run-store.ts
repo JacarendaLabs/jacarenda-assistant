@@ -52,6 +52,7 @@ export interface RunRow {
   totalCostCents: number;
   summary: string;
   pauseStateJson: string | null;
+  slackThreadTs: string | null;
 }
 
 export interface RunEventRow {
@@ -67,6 +68,8 @@ export interface StartRunInput {
   tenantId?: string;
   triggeredBy: TriggeredBy;
   triggeredByActor?: string;
+  /** When set, links the run to a Slack thread for conversation continuity. */
+  slackThreadTs?: string;
 }
 
 export function startRun(input: StartRunInput): RunRow {
@@ -84,6 +87,7 @@ export function startRun(input: StartRunInput): RunRow {
     totalCostCents: 0,
     summary: "",
     pauseStateJson: null as string | null,
+    slackThreadTs: input.slackThreadTs ?? null,
   };
   getJacarendaDb().insert(agentRuns).values(row).run();
   return row;
@@ -163,6 +167,31 @@ export function listRunsForAgent(
     .from(agentRuns)
     .where(
       and(eq(agentRuns.agentId, agentId), eq(agentRuns.tenantId, tenantId)),
+    )
+    .orderBy(desc(agentRuns.startedAt))
+    .limit(limit)
+    .all();
+  return rows as RunRow[];
+}
+
+/**
+ * Prior runs for a given Slack thread, newest-first. Used by the
+ * Personal Assistant to stitch conversation continuity across messages
+ * in the same thread (Phase 2.3c1).
+ */
+export function listRunsForSlackThread(
+  slackThreadTs: string,
+  tenantId: string = DEFAULT_TENANT_ID,
+  limit = 10,
+): RunRow[] {
+  const rows = getJacarendaDb()
+    .select()
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.slackThreadTs, slackThreadTs),
+        eq(agentRuns.tenantId, tenantId),
+      ),
     )
     .orderBy(desc(agentRuns.startedAt))
     .limit(limit)

@@ -32,8 +32,18 @@ const resumeAgentMock = mock(async () => ({
   run: { id: "run-1", status: "succeeded" } as unknown,
   responseText: "ok",
 }));
+// Stub out the full orchestrator surface — bun's mock.module shares the
+// module cache across test files that run in the same process, so any
+// other file touching `../jacarenda/runtime/orchestrator.js` needs to
+// find both `runAgent` and `resumeAgent` here too.
+const runAgentStubForShared = mock(async () => ({
+  kind: "done" as const,
+  run: { id: "run-shared", status: "succeeded" } as unknown,
+  responseText: "ok",
+}));
 mock.module("../jacarenda/runtime/orchestrator.js", () => ({
   resumeAgent: resumeAgentMock,
+  runAgent: runAgentStubForShared,
   RuntimeError: class extends Error {
     constructor(
       msg: string,

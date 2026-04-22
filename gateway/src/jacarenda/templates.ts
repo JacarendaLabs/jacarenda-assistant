@@ -14,7 +14,13 @@ export interface AgentTemplate {
   id: string;
   name: string;
   description: string;
-  category: "marketing" | "sales" | "support" | "ops" | "finance";
+  category:
+    | "marketing"
+    | "sales"
+    | "support"
+    | "ops"
+    | "finance"
+    | "orchestration";
   /** Default personality copy — the wizard lets the user tune this. */
   defaultPersonality: string;
   /** Default rules — preset guardrails. User can edit. */
@@ -30,6 +36,30 @@ export interface AgentTemplate {
 }
 
 export const TEMPLATES: AgentTemplate[] = [
+  {
+    id: "personal-assistant",
+    name: "Personal Assistant",
+    description:
+      "Your front door on Slack. Answers quick questions, looks things up in Fibery, remembers context, and — in Phase 2.3c2 — delegates to specialist agents for anything outside its remit.",
+    category: "orchestration",
+    defaultPersonality: [
+      "You are the user's personal assistant on Slack. You are warm, direct, and efficient — you don't pad replies with filler.",
+      "You treat the user as a peer, not a client. You answer what they asked, not what you think they should have asked.",
+      "When you don't know, you say so. You never fabricate facts about the business — you look them up in Fibery or in your memory first.",
+      "You keep replies short for routine messages (1-3 sentences); go longer only when the question genuinely needs it.",
+    ].join(" "),
+    defaultRules: [
+      "Read-only on Fibery and memory. You do not create, modify, or delete anything at this level.",
+      "Before answering a question about the business, check memory.recall for prior context, then fibery.query if a specific record is implied.",
+      "If the user asks for anything that requires posting, publishing, messaging, or mutating external systems, say you'll pass it to a specialist (this will be wired in the next phase).",
+      "Never claim to be human. If asked, you are the user's Jacarenda assistant.",
+      "Keep Slack replies tight. Use bullet lists only when listing ≥3 discrete items.",
+    ].join("\n"),
+    defaultTools: ["memory.recall", "fibery.query"],
+    defaultTrustMode: "draft",
+    defaultTriggerConfig: {},
+    defaultSpendCapCents: 200,
+  },
   {
     id: "social-media-manager",
     name: "Social Media Manager",

@@ -201,4 +201,60 @@ describe("dispatchApprovalToSlack", () => {
     const headers = capturedInit?.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("Bearer xoxb-test-bot-token");
   });
+
+  test("posts into the originating thread when slackThreadTs is provided", async () => {
+    // Global approvals channel is DIFFERENT from the thread channel — so
+    // we can assert the thread wins the routing.
+    process.env.JACARENDA_SLACK_APPROVALS_CHANNEL = "C-GLOBAL";
+    let capturedInit: RequestInit | undefined;
+    const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+      capturedInit = init;
+      return new Response(JSON.stringify({ ok: true, ts: "x" }), {
+        status: 200,
+      });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await dispatchApprovalToSlack({
+      agent: AGENT,
+      approvalId: "approval-thread",
+      question: "q",
+      proposedAction: { toolId: "fibery.create", input: {} },
+      publicBaseUrl: "https://assistant.jacarendalabs.com",
+      slackThreadTs: "C-DM123:1700000000.0001",
+    });
+
+    const parsed = JSON.parse(String(capturedInit?.body ?? "{}")) as {
+      channel: string;
+      thread_ts?: string;
+    };
+    expect(parsed.channel).toBe("C-DM123");
+    expect(parsed.thread_ts).toBe("1700000000.0001");
+  });
+
+  test("falls back to global channel when thread ref is malformed", async () => {
+    process.env.JACARENDA_SLACK_APPROVALS_CHANNEL = "C-GLOBAL";
+    let capturedInit: RequestInit | undefined;
+    const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+      capturedInit = init;
+      return new Response(JSON.stringify({ ok: true, ts: "x" }));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await dispatchApprovalToSlack({
+      agent: AGENT,
+      approvalId: "approval-mangled",
+      question: "q",
+      proposedAction: { toolId: "fibery.create", input: {} },
+      publicBaseUrl: "https://assistant.jacarendalabs.com",
+      slackThreadTs: "not-a-valid-ref",
+    });
+
+    const parsed = JSON.parse(String(capturedInit?.body ?? "{}")) as {
+      channel: string;
+      thread_ts?: string;
+    };
+    expect(parsed.channel).toBe("C-GLOBAL");
+    expect(parsed.thread_ts).toBeUndefined();
+  });
 });
