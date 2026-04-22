@@ -55,7 +55,7 @@ export function TopBar({
       <div
         className={cn(
           "container mx-auto px-6 flex items-center justify-between gap-6 transition-all duration-200",
-          scrolled ? "py-2" : "py-3",
+          scrolled ? "pt-3 pb-2" : "pt-5 pb-3",
         )}
       >
         <a
@@ -65,7 +65,7 @@ export function TopBar({
           <img
             src="/admin/logo-256.png"
             alt=""
-            className="h-7 w-auto block"
+            className="h-6 w-auto block -mt-0.5"
             aria-hidden="true"
           />
           <span className="font-inter font-semibold tracking-tight text-[15px]">
