@@ -11,6 +11,7 @@ interface AgentsViewProps {
   onSignOut: () => void;
   onUnauthorized: () => void;
   onNavigateChannels: () => void;
+  onSelectAgent: (id: string) => void;
 }
 
 type ListState =
@@ -22,6 +23,7 @@ export function AgentsView({
   onSignOut,
   onUnauthorized,
   onNavigateChannels,
+  onSelectAgent,
 }: AgentsViewProps) {
   useStageAnimations();
   const [state, setState] = useState<ListState>({ kind: "loading" });
@@ -122,7 +124,11 @@ export function AgentsView({
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   {state.agents.map((agent) => (
-                    <AgentCard key={agent.id} agent={agent} />
+                    <AgentCard
+                      key={agent.id}
+                      agent={agent}
+                      onClick={onSelectAgent}
+                    />
                   ))}
                 </div>
               </>

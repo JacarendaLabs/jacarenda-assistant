@@ -3,6 +3,7 @@ import type { Agent } from "./types";
 
 interface AgentCardProps {
   agent: Agent;
+  onClick?: (id: string) => void;
 }
 
 const TRUST_LABEL: Record<Agent["trustMode"], string> = {
@@ -17,10 +18,20 @@ const STATUS_LABEL: Record<Agent["status"], string> = {
   archived: "Archived",
 };
 
-export function AgentCard({ agent }: AgentCardProps) {
+export function AgentCard({ agent, onClick }: AgentCardProps) {
   const toolCount = agent.toolAllowlist.length;
+  const interactive = Boolean(onClick);
   return (
-    <div className="group p-8 rounded-2xl border border-gray-100 hover:border-gray-300 hover-lift transition-all duration-300 bg-white shadow-sm">
+    <button
+      type="button"
+      onClick={interactive ? () => onClick!(agent.id) : undefined}
+      disabled={!interactive}
+      className={`group text-left w-full p-8 rounded-2xl border border-gray-100 transition-all duration-300 bg-white shadow-sm ${
+        interactive
+          ? "hover:border-gray-300 hover-lift cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          : "cursor-default"
+      }`}
+    >
       <div className="flex items-start gap-4">
         <div className="w-14 h-14 rounded-xl bg-black flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
           <Bot className="w-6 h-6 text-white" />
@@ -46,7 +57,7 @@ export function AgentCard({ agent }: AgentCardProps) {
           {toolCount} tool{toolCount === 1 ? "" : "s"}
         </Pill>
       </div>
-    </div>
+    </button>
   );
 }
 
