@@ -21,6 +21,8 @@ import {
 import { TEMPLATES, getTemplate } from "./templates.js";
 import { TOOLS } from "./tools.js";
 import { listPendingApprovals } from "./approval-store.js";
+import { runAgent, RuntimeError } from "./runtime/orchestrator.js";
+import { listEvents, listRunsForAgent, getRun } from "./runtime/run-store.js";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -157,6 +159,71 @@ export function createJacarendaRoutes(): RouteDefinition[] {
       handler: (req) => {
         if (!requireAdminSession(req)) return unauthorized();
         return json({ approvals: listPendingApprovals() });
+      },
+    },
+
+    // Runs — list for an agent
+    {
+      path: /^\/admin\/api\/jacarenda\/agents\/([A-Za-z0-9-]+)\/runs$/,
+      method: "GET",
+      auth: "custom",
+      handler: (req, params) => {
+        if (!requireAdminSession(req)) return unauthorized();
+        return json({ runs: listRunsForAgent(params[0]) });
+      },
+    },
+
+    // Runs — trigger a new one (Phase 2.1a: manual only, no tools)
+    {
+      path: /^\/admin\/api\/jacarenda\/agents\/([A-Za-z0-9-]+)\/runs$/,
+      method: "POST",
+      auth: "custom",
+      handler: async (req, params) => {
+        if (!requireAdminSession(req)) return unauthorized();
+        const body = await parseJson(req);
+        if (!isPlainObject(body) || typeof body.input !== "string") {
+          return json({ error: "body.input (string) is required" }, 400);
+        }
+        try {
+          const result = await runAgent({
+            agentId: params[0],
+            userInput: body.input,
+            triggeredBy: "manual",
+            triggeredByActor: "admin",
+          });
+          return json(
+            {
+              run: result.run,
+              response: result.responseText,
+            },
+            200,
+          );
+        } catch (err) {
+          if (err instanceof RuntimeError) {
+            const status =
+              err.code === "agent_not_found"
+                ? 404
+                : err.code === "input_too_long" ||
+                    err.code === "agent_not_runnable"
+                  ? 400
+                  : 500;
+            return json({ error: err.message, code: err.code }, status);
+          }
+          return json({ error: "internal error" }, 500);
+        }
+      },
+    },
+
+    // Run events (trace)
+    {
+      path: /^\/admin\/api\/jacarenda\/runs\/([A-Za-z0-9-]+)\/events$/,
+      method: "GET",
+      auth: "custom",
+      handler: (req, params) => {
+        if (!requireAdminSession(req)) return unauthorized();
+        const run = getRun(params[0]);
+        if (!run) return json({ error: "not found" }, 404);
+        return json({ run, events: listEvents(params[0]) });
       },
     },
   ];

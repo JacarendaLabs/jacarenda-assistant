@@ -15,8 +15,8 @@ import {
 import { TopBar } from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { useToast } from "@/components/ui/use-toast";
 import { useStageAnimations } from "@/hooks/useStageAnimations";
+import { TestDriveSection } from "@/components/agents/TestDriveSection";
 import type { Agent } from "@/components/agents/types";
 
 interface ToolSpec {
@@ -78,15 +78,15 @@ export function AgentDetailView({
   onNavigateApprovals,
 }: AgentDetailViewProps) {
   useStageAnimations();
-  const { toast } = useToast();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   const handleTestDrive = () => {
-    toast({
-      title: "Test drive is coming.",
-      description:
-        "The runtime that actually runs agents lands in Phase 2. For now this button is a placeholder — your config is saved and ready.",
-    });
+    const el = document.getElementById("test-drive-section");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      const ta = el.querySelector<HTMLTextAreaElement>("#testdrive-input");
+      if (ta) setTimeout(() => ta.focus(), 400);
+    }
   };
 
   useEffect(() => {
@@ -157,11 +157,19 @@ export function AgentDetailView({
             )}
 
             {state.kind === "ready" && (
-              <DetailBody
-                agent={state.agent}
-                tools={state.tools}
-                onTestDrive={handleTestDrive}
-              />
+              <>
+                <DetailBody
+                  agent={state.agent}
+                  tools={state.tools}
+                  onTestDrive={handleTestDrive}
+                />
+                <div id="test-drive-section" className="mt-10">
+                  <TestDriveSection
+                    agent={state.agent}
+                    onUnauthorized={onUnauthorized}
+                  />
+                </div>
+              </>
             )}
           </div>
         </section>
