@@ -112,16 +112,16 @@ def field_exists(schema: dict[str, Any], type_qn: str, field_qn: str) -> bool:
 
 DOMAIN_FIELDS = [
     {"fibery/name": "fibery/name", "fibery/type": "fibery/text",
-     "fibery/meta": {"fibery/secured?": False, "ui/title?": True}},
+     "fibery/meta": {"ui/title?": True}},
     {"fibery/name": "fibery/id", "fibery/type": "fibery/uuid",
-     "fibery/meta": {"fibery/secured?": False, "fibery/id?": True, "fibery/readonly?": True}},
+     "fibery/meta": {"fibery/id?": True, "fibery/readonly?": True}},
     {"fibery/name": "fibery/public-id", "fibery/type": "fibery/text",
-     "fibery/meta": {"fibery/secured?": False, "fibery/public-id?": True, "fibery/readonly?": True}},
+     "fibery/meta": {"fibery/public-id?": True, "fibery/readonly?": True}},
     {"fibery/name": "fibery/creation-date", "fibery/type": "fibery/date-time",
-     "fibery/meta": {"fibery/secured?": False, "fibery/creation-date?": True,
+     "fibery/meta": {"fibery/creation-date?": True,
                      "fibery/readonly?": True, "fibery/default-value": "$now"}},
     {"fibery/name": "fibery/modification-date", "fibery/type": "fibery/date-time",
-     "fibery/meta": {"fibery/secured?": False, "fibery/modification-date?": True,
+     "fibery/meta": {"fibery/modification-date?": True,
                      "fibery/required?": True, "fibery/readonly?": True,
                      "fibery/default-value": "$now"}},
 ]
@@ -238,19 +238,19 @@ TYPES: dict[str, list[tuple[str, str]]] = {
     ],
 
     # Product and Web
-    "Product and Web/Property": [
+    "Product/Property": [
         ("URL", "t"), ("Description", "d"),
         ("Tech Stack", "t"), ("Status", "t"),
     ],
-    "Product and Web/Feature": [
+    "Product/Feature": [
         ("Description", "d"), ("Status", "t"),
         ("Target Release", "t"), ("Notes", "d"),
     ],
-    "Product and Web/Release": [
+    "Product/Release": [
         ("Version", "t"), ("Released At", "date"),
         ("Release Notes", "d"), ("Status", "t"),
     ],
-    "Product and Web/Bug": [
+    "Product/Bug": [
         ("Description", "d"), ("Severity", "t"), ("Status", "t"),
         ("Steps to Reproduce", "d"), ("Fix Notes", "d"),
     ],
@@ -311,12 +311,12 @@ TYPES: dict[str, list[tuple[str, str]]] = {
     ],
 
     # Legal and Contracts
-    "Legal and Contracts/Contract": [
+    "Legal/Contract": [
         ("Type", "t"), ("Status", "t"), ("Signed Date", "date"),
         ("Effective Date", "date"), ("Expiration Date", "date"),
         ("Value", "dec"), ("Currency", "t"), ("Notes", "d"),
     ],
-    "Legal and Contracts/Legal Document": [
+    "Legal/Legal Document": [
         ("Type", "t"), ("Status", "t"), ("Created Date", "date"),
         ("Expiration Date", "date"), ("Notes", "d"),
     ],
@@ -409,13 +409,13 @@ RELATIONS: list[dict[str, Any]] = [
      "from_many": False, "to_many": True},
 
     # Product and Web
-    {"from": "Product and Web/Feature", "to": "Product and Web/Property",
+    {"from": "Product/Feature", "to": "Product/Property",
      "from_field": "Property", "to_field": "Features",
      "from_many": False, "to_many": True},
-    {"from": "Product and Web/Release", "to": "Product and Web/Property",
+    {"from": "Product/Release", "to": "Product/Property",
      "from_field": "Property", "to_field": "Releases",
      "from_many": False, "to_many": True},
-    {"from": "Product and Web/Bug", "to": "Product and Web/Feature",
+    {"from": "Product/Bug", "to": "Product/Feature",
      "from_field": "Feature", "to_field": "Bugs",
      "from_many": False, "to_many": True},
 
@@ -442,10 +442,10 @@ RELATIONS: list[dict[str, Any]] = [
      "from_many": False, "to_many": True},
 
     # Legal
-    {"from": "Legal and Contracts/Contract", "to": "CRM/Company",
+    {"from": "Legal/Contract", "to": "CRM/Company",
      "from_field": "Company", "to_field": "Contracts",
      "from_many": False, "to_many": True},
-    {"from": "Legal and Contracts/Contract", "to": "Services/Engagement",
+    {"from": "Legal/Contract", "to": "Services/Engagement",
      "from_field": "Engagement", "to_field": "Contracts",
      "from_many": False, "to_many": True},
 ]
@@ -454,7 +454,7 @@ RELATIONS: list[dict[str, Any]] = [
 SEEDS: dict[str, list[str]] = {
     "Brand/Brand": ["Jacarenda Labs"],
     "Services/Service Line": ["Consultancy", "Advisory", "Development", "Training"],
-    "Product and Web/Property": [
+    "Product/Property": [
         "jacarendalabs.com",
         "Vellum (assistant.jacarendalabs.com)",
     ],
@@ -485,16 +485,40 @@ def qname_field(type_qn: str, field: str) -> str:
 
 
 def field_list(type_qn: str) -> list[dict[str, Any]]:
+    """Build the full field list for a type — mandatory primitives plus
+    custom fields. Every Collaboration~Documents/Document field must be
+    flagged as an entity-component (Fibery's validator requires the flag
+    on every field of an entity-component database type)."""
     fields: list[dict[str, Any]] = list(DOMAIN_FIELDS)
     for name, short_type in TYPES[type_qn]:
+        meta: dict[str, Any] = {}
+        if short_type == "d":
+            meta["fibery/entity-component?"] = True
         fields.append(
             {
                 "fibery/name": qname_field(type_qn, name),
                 "fibery/type": T[short_type],
-                "fibery/meta": {},
+                "fibery/meta": meta,
             },
         )
     return fields
+
+
+def ensure_field_meta(type_qn: str, field_name: str) -> dict[str, Any]:
+    """Meta for a field added via ensure_field (post-type-creation).
+    First doc field gets entity-component flag."""
+    fields = TYPES.get(type_qn, [])
+    # Is this the first "d" field on the type? (only matters if no doc exists yet)
+    for name, short_type in fields:
+        if name == field_name and short_type == "d":
+            # Check whether any earlier doc field exists in the spec
+            for earlier_name, earlier_type in fields:
+                if earlier_name == field_name:
+                    break
+                if earlier_type == "d":
+                    return {}
+            return {"fibery/entity-component?": True}
+    return {}
 
 
 def delete_template_types(schema: dict[str, Any]) -> bool:
