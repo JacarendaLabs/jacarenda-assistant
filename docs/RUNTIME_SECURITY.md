@@ -186,6 +186,52 @@ Every new tool must:
 - [ ] Be referenced in a template's `defaultTools` only if its risk
       tier is appropriate for that template.
 
+## Slack interactivity — why no signing-secret webhook
+
+The obvious design for "buttons inside a Slack message" is a public
+`POST /webhooks/slack/interactivity` endpoint protected by the
+`X-Slack-Signature` HMAC (with timestamp tolerance to block replays).
+We deliberately do **not** do that. The gateway already runs Slack in
+**Socket Mode**: a long-lived outbound WebSocket authenticated at
+handshake time by the app-level token (`xapp-…`). Slack delivers every
+`block_actions` payload over the same authenticated socket, so there is
+no public inbound surface to sign or replay.
+
+This shrinks the threat model: no webhook to be DoS'd, no replay window
+to tune, no attacker-controlled HTTP path. The authentication boundary
+is Slack's WebSocket plus the app token's CES isolation.
+
+Constraints this places on `gateway/src/jacarenda/runtime/slack-approval-interactivity.ts`:
+
+- The handler runs inside the Socket Mode event callback. It MUST NOT
+  block envelope ACK — `resumeAgent()` is fired via
+  `.then()/.catch()`, not awaited. Slack's socket ACK path stays
+  independent of our runtime latency.
+- `action.value` is the sole link from the click back to the approval
+  row (`agent_approvals.id`). The `action_id` (`APPROVAL_ACTION_APPROVE`
+  / `..._REJECT`) is pinned at the module level and treated as a
+  closed set — unknown action_ids return `"passthrough"` so the
+  normalize-and-forward path still handles legitimate non-approval
+  Block Kit buttons.
+- The original Slack message is rewritten via `chat.update` to a
+  terminal tombstone (approved/rejected by <user> at <time>) so there
+  is no ambiguity if a teammate opens the thread later. Update
+  failure is swallowed; the decision stands and the admin UI is
+  authoritative.
+- Double-click handling: `decideApproval()` is the idempotency gate —
+  it throws `ApprovalAlreadyDecidedError` on the second call, which
+  the interactivity handler catches and surfaces as a short
+  "already decided" message. The run is only resumed once.
+- The `decidedBy` string carries the Slack identity with a `slack:`
+  prefix, mirroring the admin UI's `admin` actor. `agent_approvals`
+  already stores the full string — no new schema.
+
+If Slack ever moves our app off Socket Mode (e.g. enterprise workspaces
+that forbid outbound WS), this threat model inverts and we MUST add
+signing-secret verification + a 5-minute timestamp tolerance before
+landing a webhook endpoint. Update this section and the phase table
+first, then implement.
+
 ## What we give up by not extending the daemon
 
 Vellum's upstream has in-house agent-loop hardening — their own
@@ -232,12 +278,14 @@ current — it is the running audit trail.
 | 3. Per-tenant tool scoping | ✅ enforced | 2.2a (`ToolContext.tenantId` plumbed) |
 | 4. Zod input schemas (strict, no `z.any`) | ✅ enforced | 2.2a onwards — every tool |
 | 5. Trust-mode gate in code | ✅ enforced | 2.3a (pause/resume; hard-fail backstop retained) |
-| 5. Approval dispatch in originating channel | ⏭ Slack in 2.3b; WhatsApp in 4 |
+| 5. Approval dispatch in originating channel | ✅ Slack in 2.3b1/b2; WhatsApp in Phase 4 |
 | 6. Audit trail in `agent_run_events` | ✅ enforced | 2.1a onwards — single `appendEvent` chokepoint |
 | 7. Output redaction (credential shapes, size caps) | ✅ enforced | 2.1a (`run-store.redact`); tool-side caps in 2.2a/b/c |
 | 8. Spend cap hard enforcement | ⏭ 2.5 | cost is logged today |
 | Approval idempotency (double-decide) | ✅ enforced | 2.3a (`ApprovalAlreadyDecidedError`) |
 | Paused-state rebuild safety | ✅ enforced | 2.3a (`loadPauseState<T>` + defensive parse) |
-| Slack signing-secret replay protection | ⏭ 2.3b | |
+| Slack interactivity auth (Socket Mode app token) | ✅ enforced | 2.3b2 — WS handshake replaces webhook signing-secret |
+| Slack approval action_id pinning | ✅ enforced | 2.3b2 (`APPROVAL_ACTION_APPROVE` / `..._REJECT` constants) |
+| Slack approval double-click idempotency | ✅ enforced | 2.3b2 (`ApprovalAlreadyDecidedError` short-circuit + message tombstone) |
 | Scheduler-only trigger auth | ⏭ 2.4 | |
 | Per-tenant / per-day spend caps | ⏭ 2.5 | per-run cap is the 2.5 MVP |

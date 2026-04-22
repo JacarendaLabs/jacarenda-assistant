@@ -66,8 +66,8 @@ for 6–12 weeks before onboarding a second tenant.
 | 2.2c | `slack.post-to-channel`, `slack.dm` — CES-gated creds via `readCredential` | ✅ Shipped |
 | 2.3a | Pause / resume lifecycle + admin-UI approvals (approve / reject → run resumes) | ✅ Shipped |
 | 2.3b1 | Slack outbound approval notifications (Block Kit → admin-UI) | ✅ Shipped |
-| 2.3b2 | Slack inbound interactivity — Approve / Reject buttons in Slack | ⏭ Next |
-| **2.3c** | **Slack inbound conversation** — @mention / DM the agent in Slack, agent replies in-thread with tools + approvals + memory | NEW — prioritised |
+| 2.3b2 | Slack inbound interactivity — Approve / Reject buttons in Slack | ✅ Shipped |
+| **2.3c** | **Slack inbound conversation** — @mention / DM the agent in Slack, agent replies in-thread with tools + approvals + memory | ⏭ Next |
 | 2.4 | Scheduler tick loop — weekly / daily / cron triggers | |
 | 2.5 | Spend-cap hard enforcement + cost tracking | |
 | **2.6** | **LinkedIn integration** — OAuth + `linkedin.post-to-feed` tool (CES-gated) | NEW |

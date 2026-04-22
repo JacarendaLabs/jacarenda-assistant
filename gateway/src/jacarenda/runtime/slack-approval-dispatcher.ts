@@ -1,14 +1,15 @@
 /**
- * Slack outbound approval notification (Phase 2.3b1).
+ * Slack outbound approval notification (Phase 2.3b1 / 2.3b2).
  *
  * When a run pauses for human approval, we post a Block Kit message to
- * the configured approvals channel. No buttons yet — the message
- * points at the admin-UI Approvals queue. In-Slack Approve / Reject
- * buttons land in 2.3b2 once signing-secret verification is wired.
+ * the configured approvals channel. Phase 2.3b2 adds inline
+ * Approve / Reject buttons — the block_actions payloads they emit are
+ * handled in `slack-approval-interactivity.ts` (Socket Mode, so no
+ * signing-secret webhook is needed).
  *
  * Design notes:
- *  - Dispatch is non-fatal. If Slack is down, the signing secret isn't
- *    set, or the channel id is missing, the run STAYS PAUSED — nothing
+ *  - Dispatch is non-fatal. If Slack is down, the token isn't set,
+ *    or the channel id is missing, the run STAYS PAUSED — nothing
  *    ships without the approval landing in the admin UI. We just lose
  *    the push notification.
  *  - Credential isolation: bot token resolved via
@@ -17,10 +18,17 @@
  *  - Channel configuration: `JACARENDA_SLACK_APPROVALS_CHANNEL` env var
  *    for MVP (single global channel for all Jacarenda Labs agents).
  *    Per-agent channel routing lands with channel-first ops in Phase 4.
+ *  - Button action_ids (`APPROVAL_ACTION_APPROVE` / `..._REJECT`) and the
+ *    `value` field (approval id) are the load-bearing contract with the
+ *    interactivity handler. Changing them breaks in-flight approvals —
+ *    add new action_ids if you need to evolve the shape.
  */
 
 import type { Agent } from "../agent-store.js";
 import { getSlackBotToken } from "./slack-credentials.js";
+
+export const APPROVAL_ACTION_APPROVE = "jacarenda_approval_approve";
+export const APPROVAL_ACTION_REJECT = "jacarenda_approval_reject";
 
 export interface DispatchApprovalInput {
   agent: Agent;
@@ -168,9 +176,22 @@ function buildApprovalBlocks(input: BuildBlocksInput): unknown[] {
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "Open Approvals", emoji: false },
-          url: input.approvalUrl,
+          action_id: APPROVAL_ACTION_APPROVE,
+          text: { type: "plain_text", text: "Approve", emoji: false },
+          value: input.approvalId,
           style: "primary",
+        },
+        {
+          type: "button",
+          action_id: APPROVAL_ACTION_REJECT,
+          text: { type: "plain_text", text: "Reject", emoji: false },
+          value: input.approvalId,
+          style: "danger",
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Open admin UI", emoji: false },
+          url: input.approvalUrl,
         },
       ],
     },
@@ -179,7 +200,7 @@ function buildApprovalBlocks(input: BuildBlocksInput): unknown[] {
       elements: [
         {
           type: "mrkdwn",
-          text: `Approval id \`${truncate(input.approvalId, 8)}…\` · decide in the admin UI · in-Slack buttons land in 2.3b2`,
+          text: `Approval id \`${truncate(input.approvalId, 8)}…\` · decide here or in the admin UI`,
         },
       ],
     },

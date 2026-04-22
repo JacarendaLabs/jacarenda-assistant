@@ -1467,7 +1467,16 @@ async function main() {
     if (!botToken || !appToken) return;
 
     slackSocketClient = createSlackSocketModeClient(
-      { appToken, botToken, gatewayConfig: config },
+      {
+        appToken,
+        botToken,
+        gatewayConfig: config,
+        onInteractive: async (payload) => {
+          const { handleApprovalBlockAction } =
+            await import("./jacarenda/runtime/slack-approval-interactivity.js");
+          return handleApprovalBlockAction(payload);
+        },
+      },
       (normalized) => {
         // Notify the platform of inbound activity so the idle-sleep timer
         // is reset for this assistant (fire-and-forget).

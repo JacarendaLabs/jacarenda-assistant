@@ -41,6 +41,17 @@ export type SlackSocketModeConfig = {
   botUsername?: string;
   /** Workspace/team name, resolved at startup via auth.test. */
   teamName?: string;
+  /**
+   * Optional pre-normalizer hook for `block_actions` payloads. If the
+   * handler resolves to `"handled"` the payload is NOT forwarded to the
+   * generic inbound-message pipeline — this is how Jacarenda approval
+   * buttons short-circuit the normalizer (a click is not a user message).
+   * Resolving to `"passthrough"` or throwing falls through to the
+   * existing normalize-and-forward path.
+   */
+  onInteractive?: (
+    payload: SlackBlockActionsPayload,
+  ) => Promise<"handled" | "passthrough">;
 };
 
 /**
@@ -726,9 +737,35 @@ export class SlackSocketModeClient {
     // Only handle block_actions (from Block Kit buttons)
     if (payload.type !== "block_actions") return;
 
-    // First try to normalize as a channel-scoped block_actions event
+    const typed = payload as unknown as SlackBlockActionsPayload;
+
+    // Give pre-normalizer hooks first crack — e.g. Jacarenda approval
+    // buttons own their own action_ids and must NOT flow through the
+    // inbound-message pipeline (a button click is not a user message).
+    // Hook errors fall through to the existing path so a broken hook
+    // can't swallow real interactivity.
+    if (this.config.onInteractive) {
+      this.config
+        .onInteractive(typed)
+        .then((result) => {
+          if (result === "handled") return;
+          this.forwardNormalizedInteractive(typed);
+        })
+        .catch((err) => {
+          log.warn({ err }, "onInteractive hook threw; falling through");
+          this.forwardNormalizedInteractive(typed);
+        });
+      return;
+    }
+
+    this.forwardNormalizedInteractive(typed);
+  }
+
+  private forwardNormalizedInteractive(
+    payload: SlackBlockActionsPayload & { envelope_id?: string },
+  ): void {
     const normalized = normalizeSlackBlockActions(
-      payload as unknown as SlackBlockActionsPayload,
+      payload,
       payload.envelope_id ?? "unknown",
       this.config.gatewayConfig,
     );
