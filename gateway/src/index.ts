@@ -131,7 +131,10 @@ import { AvatarSyncWatcher } from "./avatar-sync/avatar-sync-watcher.js";
 import { SlackAvatarSyncer } from "./avatar-sync/slack-avatar-syncer.js";
 import { initGatewayDb } from "./db/connection.js";
 import { initJacarendaDb } from "./jacarenda/db.js";
-import { seedIfEmpty as seedJacarendaAgents } from "./jacarenda/agent-store.js";
+import {
+  ensurePersonalAssistant,
+  seedIfEmpty as seedJacarendaAgents,
+} from "./jacarenda/agent-store.js";
 import { createJacarendaRoutes } from "./jacarenda/routes.js";
 
 const log = getLogger("main");
@@ -233,6 +236,15 @@ async function main() {
   await initGatewayDb();
   await initJacarendaDb();
   seedJacarendaAgents();
+  // Ensure every tenant has exactly one Personal Assistant on startup so
+  // the Slack inbound router can resolve it without a manual env-var
+  // step. Idempotent — only creates a PA if none exists yet.
+  try {
+    const pa = ensurePersonalAssistant();
+    log.info({ agentId: pa.id }, "Personal Assistant agent ready");
+  } catch (err) {
+    log.warn({ err }, "ensurePersonalAssistant failed at startup");
+  }
 
   // ── TTL caches ──
   // Instantiate caches for credential and config file reads.
@@ -1482,34 +1494,43 @@ async function main() {
         // is reset for this assistant (fire-and-forget).
         notifyRecordActivity();
 
-        // Jacarenda Personal Assistant claim (Phase 2.3c1). When
-        // `JACARENDA_SLACK_DEFAULT_AGENT_ID` is set and the event is a
-        // DM or @mention (not an edit or callback click), the PA owns
-        // the message and the upstream daemon never sees it. Anything
-        // else falls through so the existing assistant flow keeps
-        // working.
-        if (process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID?.trim()) {
-          const isEdit = !!normalized.event.message.isEdit;
-          const isCallback = !!normalized.event.message.callbackData;
-          const hasActor = !!normalized.event.actor.actorExternalId;
-          const rawType = normalized.event.raw["type"];
-          const isDm = normalized.event.source.chatType === "im";
-          const isAppMention =
-            typeof rawType === "string" && rawType === "app_mention";
-          const paClaims =
-            hasActor && !isEdit && !isCallback && (isDm || isAppMention);
-          if (paClaims) {
-            (async () => {
-              try {
-                const mod =
-                  await import("./jacarenda/runtime/slack-inbound.js");
-                await mod.runPersonalAssistantForSlackEvent(normalized);
-              } catch (err) {
-                log.warn({ err }, "Jacarenda PA runner crashed");
-              }
-            })();
-            return;
-          }
+        // Jacarenda Personal Assistant claim (Phase 2.3c1). The PA
+        // owns DMs + @mentions; the upstream daemon never sees them.
+        // Anything else (edits, callback-action clicks, channel
+        // chatter without a mention) falls through so the existing
+        // assistant flow keeps working.
+        //
+        // We do a sync shape check inline so the upstream body is
+        // bypassed on the same tick; the PA run itself is fire-and-
+        // forget. Auto-resolves via templateId — no env var required
+        // (override available via JACARENDA_SLACK_DEFAULT_AGENT_ID).
+        const paIsEdit = !!normalized.event.message.isEdit;
+        const paIsCallback = !!normalized.event.message.callbackData;
+        const paHasActor = !!normalized.event.actor.actorExternalId;
+        const paRawType = normalized.event.raw["type"];
+        const paIsDm = normalized.event.source.chatType === "im";
+        const paIsAppMention =
+          typeof paRawType === "string" && paRawType === "app_mention";
+        const paShapeMatches =
+          paHasActor &&
+          !paIsEdit &&
+          !paIsCallback &&
+          (paIsDm || paIsAppMention);
+        if (paShapeMatches) {
+          (async () => {
+            try {
+              const mod = await import("./jacarenda/runtime/slack-inbound.js");
+              if (!mod.shouldPersonalAssistantClaim(normalized)) return;
+              await mod.runPersonalAssistantForSlackEvent(normalized);
+            } catch (err) {
+              log.warn({ err }, "Jacarenda PA runner crashed");
+            }
+          })();
+          // Optimistic: assume the PA will claim. If no PA is seeded
+          // yet (rare — startup ensures one), the async path drops the
+          // event and the user sees no reply. Trade-off: one missed
+          // message vs. duplicate-handling on every event.
+          return;
         }
 
         const { threadTs, channel } = normalized;

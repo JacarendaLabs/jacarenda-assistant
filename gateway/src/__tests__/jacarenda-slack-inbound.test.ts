@@ -141,19 +141,22 @@ afterEach(() => {
 });
 
 describe("shouldPersonalAssistantClaim", () => {
-  test("returns false when env var is unset", () => {
+  test("returns false when no PA agent exists", async () => {
+    await freshDb();
     expect(shouldPersonalAssistantClaim(buildEvent())).toBe(false);
   });
 
-  test("claims DMs when env var is set", () => {
-    process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID = "agent-pa";
+  test("claims DMs when a PA agent is seeded", async () => {
+    await freshDb();
+    createAgent({ templateId: "personal-assistant" });
     expect(shouldPersonalAssistantClaim(buildEvent({ chatType: "im" }))).toBe(
       true,
     );
   });
 
-  test("claims @mentions (app_mention raw type)", () => {
-    process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID = "agent-pa";
+  test("claims @mentions when a PA agent is seeded", async () => {
+    await freshDb();
+    createAgent({ templateId: "personal-assistant" });
     expect(
       shouldPersonalAssistantClaim(
         buildEvent({ chatType: "channel", rawType: "app_mention" }),
@@ -161,8 +164,18 @@ describe("shouldPersonalAssistantClaim", () => {
     ).toBe(true);
   });
 
-  test("passes on plain channel chatter (no mention)", () => {
-    process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID = "agent-pa";
+  test("explicit env var override resolves a non-PA-template agent", async () => {
+    await freshDb();
+    const agent = createAgent({ templateId: "social-media-manager" });
+    process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID = agent.id;
+    expect(shouldPersonalAssistantClaim(buildEvent({ chatType: "im" }))).toBe(
+      true,
+    );
+  });
+
+  test("passes on plain channel chatter (no mention)", async () => {
+    await freshDb();
+    createAgent({ templateId: "personal-assistant" });
     expect(
       shouldPersonalAssistantClaim(
         buildEvent({ chatType: "channel", rawType: "message" }),
@@ -170,8 +183,9 @@ describe("shouldPersonalAssistantClaim", () => {
     ).toBe(false);
   });
 
-  test("passes on edits and callback clicks", () => {
-    process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID = "agent-pa";
+  test("passes on edits and callback clicks", async () => {
+    await freshDb();
+    createAgent({ templateId: "personal-assistant" });
     expect(shouldPersonalAssistantClaim(buildEvent({ isEdit: true }))).toBe(
       false,
     );
@@ -180,8 +194,9 @@ describe("shouldPersonalAssistantClaim", () => {
     ).toBe(false);
   });
 
-  test("passes on non-Slack channels", () => {
-    process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID = "agent-pa";
+  test("passes on non-Slack channels", async () => {
+    await freshDb();
+    createAgent({ templateId: "personal-assistant" });
     expect(
       shouldPersonalAssistantClaim(buildEvent({ sourceChannel: "telegram" })),
     ).toBe(false);

@@ -202,3 +202,42 @@ export function seedIfEmpty(tenantId: string = DEFAULT_TENANT_ID): void {
     trustMode: "draft",
   });
 }
+
+/**
+ * Idempotent seed for the Personal Assistant: ensures every tenant has
+ * exactly one active PA on startup. Safe to call alongside
+ * `seedIfEmpty` — only creates a PA if none of this template exists
+ * yet for the tenant.
+ *
+ * Returns the PA agent (existing or newly created) so the Slack
+ * router can resolve it without consulting an env var.
+ */
+export function ensurePersonalAssistant(
+  tenantId: string = DEFAULT_TENANT_ID,
+): Agent {
+  const existing = listAgents(tenantId).find(
+    (a) => a.templateId === "personal-assistant",
+  );
+  if (existing) return existing;
+  return createAgent({
+    tenantId,
+    templateId: "personal-assistant",
+    status: "active",
+    trustMode: "draft",
+  });
+}
+
+/**
+ * Look up the canonical Personal Assistant for a tenant. Returns null
+ * if none exists — the caller (e.g. the Slack inbound router) should
+ * fall through to a passthrough rather than silently creating one
+ * mid-request.
+ */
+export function findPersonalAssistant(
+  tenantId: string = DEFAULT_TENANT_ID,
+): Agent | null {
+  const found = listAgents(tenantId).find(
+    (a) => a.templateId === "personal-assistant",
+  );
+  return found ?? null;
+}

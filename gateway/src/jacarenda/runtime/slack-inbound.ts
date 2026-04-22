@@ -30,7 +30,7 @@
 
 import { getLogger } from "../../logger.js";
 import type { NormalizedSlackEvent } from "../../slack/normalize.js";
-import { getAgent } from "../agent-store.js";
+import { findPersonalAssistant, getAgent } from "../agent-store.js";
 import {
   runAgent,
   RuntimeError,
@@ -44,17 +44,38 @@ const log = getLogger("jacarenda-slack-inbound");
 const SLACK_POST_TIMEOUT_MS = 10_000;
 
 /**
+ * Resolve the Personal Assistant agent. Prefers the explicit
+ * `JACARENDA_SLACK_DEFAULT_AGENT_ID` env var (useful for multi-PA
+ * future tenants and for staging overrides), then falls back to the
+ * tenant's canonical PA via template-id lookup.
+ *
+ * Returns null when neither path resolves — the router treats this as
+ * passthrough so the upstream daemon keeps handling the event.
+ */
+function resolvePersonalAssistant() {
+  const explicitId = process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID?.trim();
+  if (explicitId) {
+    const agent = getAgent(explicitId);
+    if (agent) return agent;
+    log.warn(
+      { agentId: explicitId },
+      "JACARENDA_SLACK_DEFAULT_AGENT_ID set but agent not found",
+    );
+    return null;
+  }
+  return findPersonalAssistant();
+}
+
+/**
  * Synchronous "should we claim this event?" check. Returns true for
- * DMs + @mentions when the PA is configured and the event is NOT an
- * edit / callback click (those flow through to the upstream daemon
- * untouched). Safe to call on every inbound event.
+ * DMs + @mentions when a PA agent exists and the event is NOT an edit
+ * / callback click (those flow through to the upstream daemon). Safe
+ * to call on every inbound event — falls back to passthrough if the
+ * tenant doesn't have a PA seeded.
  */
 export function shouldPersonalAssistantClaim(
   normalized: NormalizedSlackEvent,
 ): boolean {
-  const agentId = process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID?.trim();
-  if (!agentId) return false;
-
   const event = normalized.event;
   if (event.sourceChannel !== "slack") return false;
   if (event.message.isEdit) return false;
@@ -69,7 +90,8 @@ export function shouldPersonalAssistantClaim(
       : undefined;
   const isAppMention = rawType === "app_mention";
 
-  return isDm || isAppMention;
+  if (!isDm && !isAppMention) return false;
+  return resolvePersonalAssistant() !== null;
 }
 
 /**
@@ -81,20 +103,19 @@ export function shouldPersonalAssistantClaim(
 export async function runPersonalAssistantForSlackEvent(
   normalized: NormalizedSlackEvent,
 ): Promise<void> {
-  const agentId = process.env.JACARENDA_SLACK_DEFAULT_AGENT_ID?.trim();
-  if (!agentId) return;
-
   const event = normalized.event;
-  const agent = getAgent(agentId);
+  const agent = resolvePersonalAssistant();
   if (!agent) {
     log.warn(
-      { agentId },
-      "JACARENDA_SLACK_DEFAULT_AGENT_ID set but agent not found",
+      "No Personal Assistant agent resolved for tenant — dropping event",
     );
     return;
   }
   if (agent.status === "archived") {
-    log.warn({ agentId }, "Default Slack agent is archived — dropping event");
+    log.warn(
+      { agentId: agent.id },
+      "Personal Assistant is archived — dropping event",
+    );
     return;
   }
 
