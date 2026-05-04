@@ -26,7 +26,12 @@ export type RunStatus =
   | "needs_approval"
   | "cancelled";
 
-export type TriggeredBy = "manual" | "schedule" | "webhook" | "channel";
+export type TriggeredBy =
+  | "manual"
+  | "schedule"
+  | "webhook"
+  | "channel"
+  | "delegated";
 
 export type EventKind =
   | "run_started"
@@ -53,6 +58,9 @@ export interface RunRow {
   summary: string;
   pauseStateJson: string | null;
   slackThreadTs: string | null;
+  /** Parent run id when this run was kicked off via delegate.to_specialist
+   *  (Phase 2.3c2). Null for top-level runs. */
+  parentRunId: string | null;
 }
 
 export interface RunEventRow {
@@ -70,6 +78,9 @@ export interface StartRunInput {
   triggeredByActor?: string;
   /** When set, links the run to a Slack thread for conversation continuity. */
   slackThreadTs?: string;
+  /** When set, marks this run as delegated by a parent run. Used for the
+   *  PA → specialist lineage tree in Phase 2.3c2. */
+  parentRunId?: string;
 }
 
 export function startRun(input: StartRunInput): RunRow {
@@ -88,6 +99,7 @@ export function startRun(input: StartRunInput): RunRow {
     summary: "",
     pauseStateJson: null as string | null,
     slackThreadTs: input.slackThreadTs ?? null,
+    parentRunId: input.parentRunId ?? null,
   };
   getJacarendaDb().insert(agentRuns).values(row).run();
   return row;

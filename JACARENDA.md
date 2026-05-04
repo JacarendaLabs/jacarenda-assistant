@@ -68,7 +68,8 @@ for 6–12 weeks before onboarding a second tenant.
 | 2.3b1 | Slack outbound approval notifications (Block Kit → admin-UI) | ✅ Shipped |
 | 2.3b2 | Slack inbound interactivity — Approve / Reject buttons in Slack | ✅ Shipped |
 | 2.3c1 | Slack inbound — Personal Assistant: DM / @mention → PA run, thread continuity, in-thread approvals, `memory.recall` tool | ✅ Shipped |
-| 2.3c2 | **PA → specialist async delegation** — `delegate.to_specialist` tool, parent/child run lineage, result posted back to the Slack thread | ⏭ Next |
+| 2.3c2 (v0.5) | PA → specialist **synchronous** delegation — `delegate.to_specialist` tool, `agent_runs.parent_run_id` lineage, specialist's response returns inline so PA synthesises a single thread reply | ✅ Shipped |
+| 2.3c2.5 | Async delegation refinement — fire-and-forget child run + result posted back as a fresh in-thread message (use when specialist work takes >30s) | ⏭ Next |
 | 2.3c3 | Thread continuity polish — full conversation-state model (user turns + assistant turns), identity mapping (Slack user → email) | |
 | 2.4 | Scheduler tick loop — weekly / daily / cron triggers | |
 | 2.5 | Spend-cap hard enforcement + cost tracking | |

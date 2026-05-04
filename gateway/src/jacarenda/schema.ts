@@ -67,11 +67,16 @@ export const agentRuns = sqliteTable(
     // in the same Slack thread as a single conversation (Phase 2.3c1 —
     // thread continuity) and to route approvals back into the thread.
     slackThreadTs: text("slack_thread_ts"),
+    // Parent run when this run was kicked off via `delegate.to_specialist`
+    // (Phase 2.3c2). Self-reference; null for top-level runs. Lets the
+    // admin UI show the full PA → specialist lineage as a tree.
+    parentRunId: text("parent_run_id"),
   },
   (t) => [
     index("idx_agent_runs_agent").on(t.agentId),
     index("idx_agent_runs_tenant_started").on(t.tenantId, t.startedAt),
     index("idx_agent_runs_slack_thread").on(t.slackThreadTs, t.startedAt),
+    index("idx_agent_runs_parent").on(t.parentRunId),
   ],
 );
 

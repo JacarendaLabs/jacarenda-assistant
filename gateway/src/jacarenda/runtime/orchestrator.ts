@@ -76,6 +76,12 @@ export interface RunAgentInput {
    * the global approvals channel. Format: `<channelId>:<threadTs>`.
    */
   slackThreadTs?: string;
+  /**
+   * Parent run id when this run was kicked off via
+   * `delegate.to_specialist` (Phase 2.3c2). Used for the PA → specialist
+   * lineage tree in the admin UI.
+   */
+  parentRunId?: string;
 }
 
 export type RunAgentOutcome =
@@ -136,6 +142,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutcome> {
     triggeredBy: input.triggeredBy,
     triggeredByActor: input.triggeredByActor,
     slackThreadTs: input.slackThreadTs,
+    parentRunId: input.parentRunId,
   });
 
   appendEvent(run.id, "run_started", {
