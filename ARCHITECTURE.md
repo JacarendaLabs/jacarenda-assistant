@@ -1,4 +1,4 @@
-# Vellum Assistant — Architecture
+# Jacarenda Assistant — Architecture
 
 This file is the cross-system architecture index. Detailed designs live in domain docs close to code ownership.
 

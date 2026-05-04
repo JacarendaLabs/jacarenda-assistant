@@ -4,7 +4,7 @@
  * Socket Mode delivers a normalized inbound event for every user
  * message. When `JACARENDA_SLACK_DEFAULT_AGENT_ID` is set, this router
  * claims Slack messages for the Jacarenda Personal Assistant instead
- * of forwarding them to the upstream Vellum assistant daemon.
+ * of forwarding them to the upstream assistant daemon.
  *
  * Routing rules (MVP):
  *  - Only claims `sourceChannel === "slack"` events.

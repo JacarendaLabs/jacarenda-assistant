@@ -14,7 +14,7 @@ function getClient(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "ANTHROPIC_API_KEY is not set. Set it as a Fly secret on vellum-gateway.",
+      "ANTHROPIC_API_KEY is not set. Set it as a Fly secret on the gateway app.",
     );
   }
   client = new Anthropic({ apiKey });

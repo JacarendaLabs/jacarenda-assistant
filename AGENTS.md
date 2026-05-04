@@ -1,4 +1,4 @@
-# Vellum Assistant — Agent Instructions
+# Jacarenda Assistant — Agent Instructions
 
 ## Project Structure
 
